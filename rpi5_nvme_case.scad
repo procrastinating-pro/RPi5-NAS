@@ -10,7 +10,7 @@ $fn = 60;
 render_mode = "both"; 
 
 // --- KONFIGURACJA I SKALOWANIE LOGO NA GÓRNYM DEKLU ---
-logo_type = "svg";            // Opcje: "custom_text", "raspberry", "svg", "none"
+logo_type = "custom_text";            // ["custom_text", "raspberry", "svg", "none"]
 logo_string = "ToMati";       // Tekst dla trybu "custom_text"
 logo_subtext = "NAS // RPi5"; // Podpis pod napisem
 logo_svg_file = "logo.svg";   // Plik SVG (dla logo_type = "svg")
