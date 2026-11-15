@@ -6,11 +6,11 @@ Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie 
 
 ## 📂 Zawartość repozytorium
 
-| Skrypt | Gdzie uruchamiać? | Opis działania |
-| :--- | :--- | :--- |
-| **`rpi5_configurator.sh`** | 💻 Na komputerze (np. Ubuntu) z podłączonym nośnikiem (SD/NVMe) | Konfiguruje czysty obraz przed pierwszym uruchomieniem: włącza SSH, tworzy użytkownika, wgrywa klucz SSH, ustawia statyczny IP (NetworkManager) i odblokowuje PCIe Gen 3 dla NVMe HAT+. |
-| **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. |
-| **`setup_pihole_nas.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny instalator kontenerów: zwalnia port 53 (`systemd-resolved`), tworzy strukturę katalogów i uruchamia **Pi-hole**, serwer **Samba (SMB)**, panel WWW **FileBrowser** oraz **Watchtower** (auto-update kontenerów o 04:00). |
+| Skrypt | Gdzie uruchamiać? | Opis działania | 
+| :--- | :--- | :--- | 
+| **`rpi5_configurator.sh`** | 💻 Na komputerze (np. Ubuntu) z podłączonym nośnikiem (SD/NVMe) | Konfiguruje czysty obraz przed pierwszym uruchomieniem: włącza SSH, tworzy użytkownika, wgrywa klucz SSH, ustawia statyczny IP (NetworkManager) i odblokowuje PCIe Gen 3 dla NVMe HAT+. | 
+| **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
+| **`setup_pihole_nas.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny instalator kontenerów: zwalnia port 53 (`systemd-resolved`), tworzy strukturę katalogów i uruchamia **Pi-hole**, serwer **Samba (SMB)**, panel WWW **FileBrowser** oraz **Watchtower** (auto-update kontenerów o 04:00). | 
 
 ---
 
@@ -90,10 +90,9 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian
 **Co robi skrypt:**
 1. Sprawdza, czy port `53` jest zajęty przez `systemd-resolved` i w razie potrzeby automatycznie go zwalnia.
 2. Tworzy folder dla udostępnianych plików NAS (domyślnie `/srv/nas/pliki`) oraz folder konfiguracji kontenerów (`~/docker/pihole-nas`).
-3. Generuje plik `docker-compose.yml` dopasowany do Twoich ustawień.
+3. Generuje plik `docker-compose.yml` dopasowany do Twoich ustawień (wraz z opcjonalnym kontenerem **Watchtower**, który codziennie o 04:00 rano aktualizuje obrazy i czyści stare warstwy).
 4. Inicjalizuje bazę danych **FileBrowsera** i tworzy konto administratora z Twoim własnym hasłem (wymagane min. 12 znaków).
-5. Opcjonalnie dodaje kontener **Watchtower**, który codziennie o **04:00 w nocy** sprawdza dostępność nowych wersji uruchomionych kontenerów, aktualizuje je i czyści stare obrazy.
-6. Uruchamia wszystkie kontenery w tle (`restart: unless-stopped`).
+5. Uruchamia wszystkie kontenery w tle (`restart: unless-stopped`).
 
 ---
 
@@ -149,3 +148,9 @@ docker compose stop filebrowser
 docker compose run --rm filebrowser users update admin --password "TwojeNoweHaslo123" --database /database/filebrowser.db
 docker compose start filebrowser
 ```
+
+---
+
+## 📄 Licencja
+
+Projekt jest udostępniany na warunkach licencji **MIT**. Szczegółowe informacje znajdują się w pliku [LICENSE.md](LICENSE.md).
