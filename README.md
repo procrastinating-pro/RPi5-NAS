@@ -23,7 +23,7 @@ Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfi
 | :--- | :--- | :--- | 
 | **`rpi5_configurator.sh`** | 💻 Na komputerze (np. Ubuntu) z podłączonym nośnikiem (SD/NVMe) | Konfiguruje czysty obraz przed pierwszym uruchomieniem: włącza SSH, tworzy użytkownika, wgrywa klucz SSH, ustawia statyczny IP (NetworkManager) i odblokowuje PCIe Gen 3 dla NVMe HAT+. | 
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
-| **`setup_pihole_nas.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny instalator kontenerów: zwalnia port 53 (`systemd-resolved`), tworzy strukturę katalogów i uruchamia **Pi-hole**, serwer **Samba (SMB)**, panel WWW **FileBrowser** oraz **Watchtower** (auto-update kontenerów o 04:00). | 
+| **`setup_pihole_nas.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny instalator kontenerów: zwalnia port 53 (`systemd-resolved`), tworzy strukturę katalogów, konfiguruje **lokalne domeny DNS** i uruchamia **Pi-hole**, serwer **Samba (SMB)**, panel WWW **FileBrowser** oraz **Watchtower** (auto-update kontenerów o 04:00). | 
 | **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
 | **`diagnose_and_fix_fan.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Narzędzie diagnostyczno-naprawcze dla **Active Coolera**: skanuje partycje `bootfs` oraz `rootfs` (w tym konflikty SD vs NVMe), czyści błędne reguły `udev`/`systemd`, przywraca czystą konfigurację w `config.txt` i wykonuje sprzętowy test linii PWM (`0` vs `255`). | 
 | **`rpi5_nvme_case.scad`** | 💻 Na komputerze (OpenSCAD) | Parametryczny model 3D podwyższonej obudowy z miejscem na M.2 HAT+, radiatory NVMe, wyprowadzeniem portów i grawerowanym logo na górnej pokrywie. | 
@@ -106,17 +106,25 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian
 **Co robi skrypt:**
 1. Sprawdza, czy port `53` jest zajęty przez `systemd-resolved` i w razie potrzeby automatycznie go zwalnia.
 2. Tworzy folder dla udostępnianych plików NAS (domyślnie `/srv/nas/pliki`) oraz folder konfiguracji kontenerów (`~/docker/pihole-nas`).
-3. Generuje plik `docker-compose.yml` dopasowany do Twoich ustawień (wraz z opcjonalnym kontenerem **Watchtower**, który codziennie o 04:00 rano aktualizuje obrazy i czyści stare warstwy).
-4. Inicjalizuje bazę danych **FileBrowsera** i tworzy konto administratora z Twoim własnym hasłem (wymagane min. 12 znaków).
-5. Uruchamia wszystkie kontenery w tle (`restart: unless-stopped`).
+3. Konfiguruje **lokalne domeny DNS** (domyślnie `nas.home`, `pihole.home`, `rpi.home`), wstrzykując je bezpośrednio do pliku `docker-compose.yml` (`extra_hosts` oraz `FTLCONF_dns_hosts`) i `custom.list` (pełna kompatybilność z Pi-hole v5 i v6).
+4. Generuje plik `docker-compose.yml` dopasowany do Twoich ustawień (wraz z opcjonalnym kontenerem **Watchtower**, który codziennie o 04:00 rano aktualizuje obrazy i czyści stare warstwy).
+5. Inicjalizuje bazę danych **FileBrowsera** i tworzy konto administratora z Twoim własnym hasłem (wymagane min. 12 znaków).
+6. Uruchamia wszystkie kontenery w tle (`restart: unless-stopped`).
 
 ### ⚠️ Ważne: Konfiguracja DNS na routerze
-Aby blokowanie reklam przez **Pi-hole** działało automatycznie na wszystkich urządzeniach w domu (telefonach, telewizorach, komputerach):
+Aby blokowanie reklam przez **Pi-hole** oraz lokalne domeny (`.home`) działały automatycznie na wszystkich urządzeniach w domu (telefonach, telewizorach, komputerach):
 1. Zaloguj się do panelu administracyjnego swojego routera.
 2. Przejdź do ustawień sieci lokalnej (**LAN / DHCP Server**).
 3. Jako **Podstawowy serwer DNS (Primary DNS)** wpisz statyczny adres IP swojego Raspberry Pi (domyślnie `192.168.1.250`).
-4. Pole **Zapasowy serwer DNS (Secondary DNS)** pozostaw **puste** (jeśli wpiszesz tam np. `8.8.8.8` lub `1.1.1.1`, część zapytań ominie Pi-hole i reklamy nadal będą się wyświetlać).
+4. Pole **Zapasowy serwer DNS (Secondary DNS)** pozostaw **puste** (jeśli wpiszesz tam np. `8.8.8.8` lub `1.1.1.1`, część zapytań ominie Pi-hole, reklamy będą się wyświetlać, a lokalne domeny `nas.home` nie będą działać).
 5. Zapisz ustawienia i zrestartuj połączenie Wi-Fi/LAN na urządzeniach, aby pobrały nową konfigurację z routera.
+
+### 🌍 Lokalne domeny DNS (Konfiguracja w `docker-compose.yml`)
+Skrypt `setup_pihole_nas.sh` automatycznie pyta o lokalne domeny podczas instalacji (domyślnie: `nas.home pihole.home rpi.home`) i dopisuje je bezpośrednio do `docker-compose.yml`. 
+
+Jeśli w przyszłości zechcesz dodać kolejne własne domeny, wystarczy wyedytować plik `~/docker/pihole-nas/docker-compose.yml` (sekcja `extra_hosts` oraz `FTLCONF_dns_hosts` w usłudze `pihole`) i przeładować kontener komendą `docker compose up -d`.
+
+*(Wskazówka: Używaj końcówek `.home`, `.lan` lub `.internal`. Unikaj końcówki `.local`, która jest zarezerwowana dla protokołu mDNS/Avahi i może powodować opóźnienia).*
 
 ---
 
@@ -137,17 +145,17 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian
 
 ## 🌐 Dostęp do usług po instalacji
 
-Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych portów z konfiguratora:
+Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych lokalnych domen DNS:
 
 * **Panel administracyjny Pi-hole:**
-  * Adres: `http://192.168.1.250:8080/admin`
+  * Adres WWW: `http://pihole.home:8080/admin` (lub `http://192.168.1.250:8080/admin`)
   * Logowanie: Hasło podane podczas konfiguracji Pi-hole.
 * **Dysk sieciowy NAS (Samba / SMB):**
-  * **Linux (Ubuntu / menedżer plików):** `smb://192.168.1.250/DyskNAS`
-  * **Windows (Eksplorator plików):** `\\192.168.1.250\DyskNAS`
+  * **Linux (Ubuntu / menedżer plików):** `smb://nas.home/DyskNAS` (lub `smb://192.168.1.250/DyskNAS`)
+  * **Windows (Eksplorator plików):** `\\nas.home\DyskNAS` (lub `\\192.168.1.250\DyskNAS`)
   * Logowanie: Użytkownik i hasło Samby podane w konfiguratorze.
 * **Zarządzanie plikami NAS przez przeglądarkę (FileBrowser):**
-  * Adres: `http://192.168.1.250:8081`
+  * Adres WWW: `http://nas.home:8081` (lub `http://192.168.1.250:8081`)
   * Logowanie: Użytkownik (domyślnie `admin`) oraz własne hasło (min. 12 znaków) ustawione w konfiguratorze.
 
 ---
