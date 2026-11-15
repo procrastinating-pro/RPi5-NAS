@@ -110,6 +110,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian
 4. Inicjalizuje bazę danych **FileBrowsera** i tworzy konto administratora z Twoim własnym hasłem (wymagane min. 12 znaków).
 5. Uruchamia wszystkie kontenery w tle (`restart: unless-stopped`).
 
+### ⚠️ Ważne: Konfiguracja DNS na routerze
+Aby blokowanie reklam przez **Pi-hole** działało automatycznie na wszystkich urządzeniach w domu (telefonach, telewizorach, komputerach):
+1. Zaloguj się do panelu administracyjnego swojego routera.
+2. Przejdź do ustawień sieci lokalnej (**LAN / DHCP Server**).
+3. Jako **Podstawowy serwer DNS (Primary DNS)** wpisz statyczny adres IP swojego Raspberry Pi (domyślnie `192.168.1.250`).
+4. Pole **Zapasowy serwer DNS (Secondary DNS)** pozostaw **puste** (jeśli wpiszesz tam np. `8.8.8.8` lub `1.1.1.1`, część zapytań ominie Pi-hole i reklamy nadal będą się wyświetlać).
+5. Zapisz ustawienia i zrestartuj połączenie Wi-Fi/LAN na urządzeniach, aby pobrały nową konfigurację z routera.
+
 ---
 
 ## ❄️ Krok 4: Optymalizacja chłodzenia Active Cooler i NVMe (`setup_cooler.sh`)
