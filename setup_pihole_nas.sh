@@ -58,12 +58,24 @@ OPT_FB=${OPT_FB:-T}
 if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
     read -p "   -> Port dla FileBrowsera [8081]: " FB_PORT
     FB_PORT=${FB_PORT:-8081}
+    read -p "   -> Login administratora FileBrowsera [admin]: " FB_USER
+    FB_USER=${FB_USER:-admin}
+    while true; do
+        read -s -p "   -> Hasło do FileBrowsera (min. 12 znaków) [zostaw puste, aby użyć hasła Samby]: " FB_PASS
+        echo ""
+        FB_PASS=${FB_PASS:-$SAMBA_PASS}
+        if [ ${#FB_PASS} -ge 12 ]; then
+            break
+        else
+            echo -e "${RED}   [!] FileBrowser wymaga hasła o długości minimum 12 znaków! Podaj dłuższe hasło.${NC}"
+        fi
+    done
 fi
 
 echo -e "\n${CYAN}======================================================${NC}"
 
 # ================= KROK 1: ZWALNIANIE PORTU 53 =================
-echo -e "${YELLOW}[1/4] Sprawdzanie czy port 53 (DNS) jest wolny...${NC}"
+echo -e "${YELLOW}[1/5] Sprawdzanie czy port 53 (DNS) jest wolny...${NC}"
 if sudo ss -tulnp | grep -q ":53 "; then
     echo -e "${YELLOW}[!] Wykryto usługę zajmującą port 53. Zwalnianie portu...${NC}"
     if systemctl is-active --quiet systemd-resolved; then
@@ -82,7 +94,7 @@ else
 fi
 
 # ================= KROK 2: TWORZENIE KATALOGÓW =================
-echo -e "${YELLOW}[2/4] Tworzenie struktury katalogów...${NC}"
+echo -e "${YELLOW}[2/5] Tworzenie struktury katalogów...${NC}"
 sudo mkdir -p "$NAS_DIR"
 sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$(dirname "$NAS_DIR")"
 sudo chmod -R 775 "$NAS_DIR"
@@ -92,12 +104,12 @@ mkdir -p "$DOCKER_DIR/etc-dnsmasq.d"
 
 if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
     mkdir -p "$DOCKER_DIR/filebrowser"
-    touch "$DOCKER_DIR/filebrowser/database.db"
+    sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/filebrowser"
 fi
 echo -e "${GREEN}[+] Utworzono katalogi w $NAS_DIR oraz $DOCKER_DIR.${NC}"
 
 # ================= KROK 3: GENEROWANIE DOCKER-COMPOSE =================
-echo -e "${YELLOW}[3/4] Generowanie pliku docker-compose.yml...${NC}"
+echo -e "${YELLOW}[3/5] Generowanie pliku docker-compose.yml...${NC}"
 
 cat > "$DOCKER_DIR/docker-compose.yml" <<EOF
 services:
@@ -148,16 +160,33 @@ cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
       - "${FB_PORT}:80"
     volumes:
       - '${NAS_DIR}:/srv'
-      - './filebrowser/database.db:/database.db'
+      - './filebrowser:/database'
+    command: --database /database/filebrowser.db
     restart: unless-stopped
 EOF
 fi
 
 echo -e "${GREEN}[+] Plik docker-compose.yml został zapisany.${NC}"
 
-# ================= KROK 4: URUCHOMIENIE KONTENERÓW =================
-echo -e "${YELLOW}[4/4] Pobieranie obrazów i uruchamianie kontenerów...${NC}"
+# ================= KROK 4: INICJALIZACJA BAZY FILEBROWSERA =================
 cd "$DOCKER_DIR"
+
+if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
+    echo -e "${YELLOW}[4/5] Konfiguracja konta '$FB_USER' w bazie FileBrowsera...${NC}"
+    # Jeśli kontener już działał wcześniej, zatrzymujemy go na czas edycji bazy
+    sudo docker compose stop filebrowser >/dev/null 2>&1 || true
+    sudo rm -f "$DOCKER_DIR/filebrowser/filebrowser.db"
+
+    sudo docker compose run --rm filebrowser config init --database /database/filebrowser.db >/dev/null
+    sudo docker compose run --rm filebrowser config set --address 0.0.0.0 --root /srv --database /database/filebrowser.db >/dev/null
+    sudo docker compose run --rm filebrowser users add "$FB_USER" "$FB_PASS" --perm.admin --database /database/filebrowser.db >/dev/null
+    echo -e "${GREEN}[+] Utworzono konto '$FB_USER' z Twoim własnym hasłem.${NC}"
+else
+    echo -e "${YELLOW}[4/5] Pominięto instalację FileBrowsera.${NC}"
+fi
+
+# ================= KROK 5: URUCHOMIENIE KONTENERÓW =================
+echo -e "${YELLOW}[5/5] Uruchamianie kontenerów w tle...${NC}"
 sudo docker compose up -d
 
 echo -e "\n${CYAN}======================================================${NC}"
@@ -167,7 +196,6 @@ echo -e "1. ${CYAN}Panel Pi-hole:${NC}      http://${RPI_IP}:${PIHOLE_PORT}/admi
 echo -e "2. ${CYAN}NAS (Ubuntu/Linux):${NC} smb://${RPI_IP}/${SHARE_NAME} (Login: ${SAMBA_USER})"
 echo -e "3. ${CYAN}NAS (Windows):${NC}      \\\\${RPI_IP}\\${SHARE_NAME}"
 if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
-    echo -e "4. ${CYAN}FileBrowser (WWW):${NC}  http://${RPI_IP}:${FB_PORT}"
-    echo -e "   *(Hasło startowe dla użytkownika 'admin' sprawdzisz komendą: docker logs filebrowser-nas)*"
+    echo -e "4. ${CYAN}FileBrowser (WWW):${NC}  http://${RPI_IP}:${FB_PORT} (Login: ${FB_USER})"
 fi
 echo -e "${CYAN}======================================================${NC}"
