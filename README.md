@@ -25,6 +25,7 @@ Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfi
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
 | **`setup_pihole_nas.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny instalator kontenerów: zwalnia port 53 (`systemd-resolved`), tworzy strukturę katalogów i uruchamia **Pi-hole**, serwer **Samba (SMB)**, panel WWW **FileBrowser** oraz **Watchtower** (auto-update kontenerów o 04:00). | 
 | **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
+| **`diagnose_and_fix_fan.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Narzędzie diagnostyczno-naprawcze dla **Active Coolera**: skanuje partycje `bootfs` oraz `rootfs` (w tym konflikty SD vs NVMe), czyści błędne reguły `udev`/`systemd`, przywraca czystą konfigurację w `config.txt` i wykonuje sprzętowy test linii PWM (`0` vs `255`). | 
 | **`rpi5_nvme_case.scad`** | 💻 Na komputerze (OpenSCAD) | Parametryczny model 3D podwyższonej obudowy z miejscem na M.2 HAT+, radiatory NVMe, wyprowadzeniem portów i grawerowanym logo na górnej pokrywie. | 
 
 ---
@@ -113,15 +114,15 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian
 
 ## ❄️ Krok 4: Optymalizacja chłodzenia Active Cooler i NVMe (`setup_cooler.sh`)
 
-W zamkniętej obudowie z nakładką M.2 HAT+ i radiatorami na dysku SSD Gen 3 domyślna krzywa wentylatora (start od 50°C CPU) jest zbyt pasywna. Aby zapewnić stały obieg powietrza wokół radiatora NVMe, uruchom konfigurator chłodzenia:
+W zamkniętej obudowie z nakładką M.2 HAT+ i radiatorami na dysku SSD Gen 3 domyślna krzywa wentylatora (start od 50°C CPU) jest zbyt pasywna. Aby zapewnić optymalny obieg powietrza wokół radiatora NVMe oraz cichą pracę, uruchom konfigurator chłodzenia:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/setup_cooler.sh)
 ```
 
 **Co robi skrypt:**
-* Ustawia w `/boot/firmware/config.txt` zoptymalizowaną krzywą dla **Raspberry Pi Active Cooler** (lekki, bezgłośny przewiew w obudowie już od 38°C).
-* Instaluje pakiet `nvme-cli` oraz usługę systemową `nvme-fan-guard.service`, która odczytuje temperaturę S.M.A.R.T. dysku SSD i automatycznie zwiększa obroty wentylatora podczas dużych transferów plików przez NAS (nawet gdy sam procesor RPi 5 jest chłodny).
+* Ustawia w `/boot/firmware/config.txt` zoptymalizowaną krzywą dla **Raspberry Pi Active Cooler**.
+* Instaluje pakiet `nvme-cli` oraz usługę systemową `nvme-fan-guard.service`, która odczytuje temperaturę dysku SSD i automatycznie reguluje obroty wentylatora podczas dużych transferów plików przez NAS (nawet gdy sam procesor RPi 5 jest chłodny).
 * Tworzy polecenie diagnostyczne `rpi-temp`, pozwalające w dowolnej chwili sprawdzić temperatury oraz obroty wentylatora.
 
 ---
@@ -151,6 +152,13 @@ Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych portów 
 rpi-temp
 # lub podgląd na żywo co 2 sekundy:
 watch -n 2 rpi-temp
+```
+
+* **Pełna diagnostyka i reset konfiguracji wentylatora (w przypadku pracy na 100% obrotów):**
+  Jeśli wentylator nie reaguje na zmiany temperatury, uruchom skrypt diagnostyczny, który przeskanuje partycje `bootfs` i `rootfs`, usunie konflikty i przetestuje sprzętowo linię PWM (`PWM=0` vs `PWM=255`):
+
+```bash
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/diagnose_and_fix_fan.sh)
 ```
 
 * **Sprawdzenie statusu uruchomionych kontenerów:**
