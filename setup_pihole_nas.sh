@@ -40,20 +40,23 @@ while true; do
     if [ -n "$PIHOLE_PASS" ]; then break; else echo -e "${RED}   Hasło nie może być puste!${NC}"; fi
 done
 
+read -p "6. Lokalne domeny DNS (oddzielone spacją) [nas.home pihole.home rpi.home]: " LOCAL_DOMAINS
+LOCAL_DOMAINS=${LOCAL_DOMAINS:-"nas.home pihole.home rpi.home"}
+
 echo -e "\n${YELLOW}[*] Konfiguracja NAS (Samba + FileBrowser):${NC}"
-read -p "6. Nazwa udziału sieciowego (widoczna w LAN) [DyskNAS]: " SHARE_NAME
+read -p "7. Nazwa udziału sieciowego (widoczna w LAN) [DyskNAS]: " SHARE_NAME
 SHARE_NAME=${SHARE_NAME:-DyskNAS}
 
-read -p "7. Login do dysku sieciowego Samba [$ACTUAL_USER]: " SAMBA_USER
+read -p "8. Login do dysku sieciowego Samba [$ACTUAL_USER]: " SAMBA_USER
 SAMBA_USER=${SAMBA_USER:-$ACTUAL_USER}
 
 while true; do
-    read -s -p "8. Hasło do dysku sieciowego Samba: " SAMBA_PASS
+    read -s -p "9. Hasło do dysku sieciowego Samba: " SAMBA_PASS
     echo ""
     if [ -n "$SAMBA_PASS" ]; then break; else echo -e "${RED}   Hasło nie może być puste!${NC}"; fi
 done
 
-read -p "9. Zainstalować też panel WWW do plików (FileBrowser)? (T/n): " OPT_FB
+read -p "10. Zainstalować też panel WWW do plików (FileBrowser)? (T/n): " OPT_FB
 OPT_FB=${OPT_FB:-T}
 if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
     read -p "   -> Port dla FileBrowsera [8081]: " FB_PORT
@@ -73,7 +76,7 @@ if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
 fi
 
 echo -e "\n${YELLOW}[*] Konfiguracja automatycznych aktualizacji (Watchtower):${NC}"
-read -p "10. Dodać kontener Watchtower (auto-update obrazów i czyszczenie o 04:00)? (T/n): " OPT_WT
+read -p "11. Dodać kontener Watchtower (auto-update obrazów i czyszczenie o 04:00)? (T/n): " OPT_WT
 OPT_WT=${OPT_WT:-T}
 
 echo -e "\n${CYAN}======================================================${NC}"
@@ -106,6 +109,21 @@ sudo chmod -R 775 "$NAS_DIR"
 mkdir -p "$DOCKER_DIR/etc-pihole"
 mkdir -p "$DOCKER_DIR/etc-dnsmasq.d"
 
+# Tworzenie wpisów w custom.list (dla kompatybilności z Pi-hole v5) oraz przygotowanie zmiennych dla v6 i extra_hosts
+rm -f "$DOCKER_DIR/etc-pihole/custom.list"
+EXTRA_HOSTS_YAML=""
+FTL_HOSTS_LIST=""
+
+for dom in $LOCAL_DOMAINS; do
+    echo "${RPI_IP} ${dom}" >> "$DOCKER_DIR/etc-pihole/custom.list"
+    EXTRA_HOSTS_YAML="${EXTRA_HOSTS_YAML}      - \"${dom}:${RPI_IP}\"\n"
+    if [ -z "$FTL_HOSTS_LIST" ]; then
+        FTL_HOSTS_LIST="${RPI_IP} ${dom}"
+    else
+        FTL_HOSTS_LIST="${FTL_HOSTS_LIST},${RPI_IP} ${dom}"
+    fi
+done
+
 if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
     mkdir -p "$DOCKER_DIR/filebrowser"
     sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/filebrowser"
@@ -130,6 +148,9 @@ services:
       FTLCONF_webserver_api_password: '${PIHOLE_PASS}'
       FTLCONF_LOCAL_IPV4: '${RPI_IP}'
       FTLCONF_dns_listeningMode: 'all'
+      FTLCONF_dns_hosts: '${FTL_HOSTS_LIST}'
+    extra_hosts:
+$(echo -ne "$EXTRA_HOSTS_YAML")
     volumes:
       - './etc-pihole:/etc/pihole'
       - './etc-dnsmasq.d:/etc/dnsmasq.d'
@@ -187,7 +208,7 @@ cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
 EOF
 fi
 
-echo -e "${GREEN}[+] Plik docker-compose.yml został zapisany.${NC}"
+echo -e "${GREEN}[+] Plik docker-compose.yml został zapisany (z lokalnymi domenami DNS).${NC}"
 
 # ================= KROK 4: INICJALIZACJA BAZY FILEBROWSERA =================
 cd "$DOCKER_DIR"
@@ -209,16 +230,22 @@ fi
 echo -e "${YELLOW}[5/5] Uruchamianie kontenerów w tle...${NC}"
 sudo docker compose up -d
 
+FIRST_DOM=$(echo "$LOCAL_DOMAINS" | awk '{print $1}')
+SECOND_DOM=$(echo "$LOCAL_DOMAINS" | awk '{print $2}')
+FIRST_DOM=${FIRST_DOM:-$RPI_IP}
+SECOND_DOM=${SECOND_DOM:-$FIRST_DOM}
+
 echo -e "\n${CYAN}======================================================${NC}"
 echo -e "${GREEN}[SUKCES] Pi-hole oraz NAS działają w tle!${NC}"
 echo -e "------------------------------------------------------"
-echo -e "1. ${CYAN}Panel Pi-hole:${NC}      http://${RPI_IP}:${PIHOLE_PORT}/admin"
-echo -e "2. ${CYAN}NAS (Ubuntu/Linux):${NC} smb://${RPI_IP}/${SHARE_NAME} (Login: ${SAMBA_USER})"
-echo -e "3. ${CYAN}NAS (Windows):${NC}      \\\\${RPI_IP}\\${SHARE_NAME}"
+echo -e "1. ${CYAN}Panel Pi-hole:${NC}      http://${RPI_IP}:${PIHOLE_PORT}/admin (lub http://${SECOND_DOM}:${PIHOLE_PORT}/admin)"
+echo -e "2. ${CYAN}NAS (Ubuntu/Linux):${NC} smb://${RPI_IP}/${SHARE_NAME} (lub smb://${FIRST_DOM}/${SHARE_NAME})"
+echo -e "3. ${CYAN}NAS (Windows):${NC}      \\\\${RPI_IP}\\${SHARE_NAME} (lub \\\\${FIRST_DOM}\\${SHARE_NAME})"
 if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
-    echo -e "4. ${CYAN}FileBrowser (WWW):${NC}  http://${RPI_IP}:${FB_PORT} (Login: ${FB_USER})"
+    echo -e "4. ${CYAN}FileBrowser (WWW):${NC}  http://${RPI_IP}:${FB_PORT} (lub http://${FIRST_DOM}:${FB_PORT})"
 fi
 if [[ "$OPT_WT" =~ ^[TtYy]$ ]]; then
     echo -e "5. ${CYAN}Watchtower:${NC}         Aktywny (Auto-update codziennie o 04:00)"
 fi
+echo -e "6. ${CYAN}Lokalne domeny DNS:${NC} ${LOCAL_DOMAINS} -> ${RPI_IP}"
 echo -e "${CYAN}======================================================${NC}"
