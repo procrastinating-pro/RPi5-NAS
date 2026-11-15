@@ -1,6 +1,6 @@
-# 🍓 Raspbian-Configurator (Raspberry Pi 5 Headless + Docker + Pi-hole + NAS)
+# 🍓 Raspbian-Configurator (Raspberry Pi 5 Headless + Docker + Pi-hole + NAS + Auto-Maintenance)
 
-Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), instalację **Dockera** oraz wdrożenie domowego serwera **Pi-hole** i **NAS (Samba + FileBrowser)**.
+Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, instalację **Dockera** oraz wdrożenie domowego serwera **Pi-hole**, **NAS (Samba + FileBrowser)** i **Watchtower**.
 
 ---
 
@@ -9,8 +9,8 @@ Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie 
 | Skrypt | Gdzie uruchamiać? | Opis działania |
 | :--- | :--- | :--- |
 | **`rpi5_configurator.sh`** | 💻 Na komputerze (np. Ubuntu) z podłączonym nośnikiem (SD/NVMe) | Konfiguruje czysty obraz przed pierwszym uruchomieniem: włącza SSH, tworzy użytkownika, wgrywa klucz SSH, ustawia statyczny IP (NetworkManager) i odblokowuje PCIe Gen 3 dla NVMe HAT+. |
-| **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Instaluje najnowszy **Docker Engine** oraz **Docker Compose v2** z oficjalnego repozytorium APT, ustawia rotację logów i dodaje użytkownika do grupy `docker`. |
-| **`setup_pihole_nas.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny instalator kontenerów: zwalnia port 53 (`systemd-resolved`), tworzy strukturę katalogów i uruchamia **Pi-hole**, serwer **Samba (SMB)** oraz panel WWW **FileBrowser** z własnym hasłem. |
+| **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. |
+| **`setup_pihole_nas.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny instalator kontenerów: zwalnia port 53 (`systemd-resolved`), tworzy strukturę katalogów i uruchamia **Pi-hole**, serwer **Samba (SMB)**, panel WWW **FileBrowser** oraz **Watchtower** (auto-update kontenerów o 04:00). |
 
 ---
 
@@ -53,19 +53,21 @@ nmap -p 22 -T4 -n 192.168.1.0/24 --open
 
 ---
 
-## 🐳 Krok 2: Instalacja Dockera (`install_docker.sh`)
+## 🐳 Krok 2: Instalacja Dockera i Auto-Maintenance (`install_docker.sh`)
 
-Po zalogowaniu się na Raspberry Pi 5 przez SSH zainstaluj środowisko Docker oraz Docker Compose v2 jedną komendą:
+Po zalogowaniu się na Raspberry Pi 5 przez SSH zainstaluj środowisko Docker, Docker Compose v2 oraz harmonogram automatycznej konserwacji systemu jedną komendą:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/install_docker.sh | bash && newgrp docker
 ```
 
 **Co robi skrypt:**
-* Dodaje oficjalny klucz GPG i repozytorium Dockera dla architektury `arm64`.
-* Instaluje pakiety `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin` oraz `docker-compose-plugin`.
+* Wykonuje pełną, bezobsługową aktualizację systemu (`full-upgrade`, `autoremove`, `autoclean`).
+* Tworzy zadanie w `/etc/cron.d/auto-system-maintenance`, które **codziennie o 03:30 w nocy** aktualizuje pakiety systemowe, czyści zbędne zależności i usuwa nieużywane obrazy Dockera (`docker image prune -af`).
+* Aktywuje usługę `fstrim.timer` dbającą o kondycję i wydajność dysku NVMe.
+* Sprawdza, czy Docker jest już zainstalowany – jeśli nie, dodaje oficjalny klucz GPG i repozytorium Dockera dla architektury `arm64`, po czym instaluje pakiety `docker-ce`, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin` oraz `docker-compose-plugin`.
 * Konfiguruje plik `/etc/docker/daemon.json` z limitem rozmiaru logów (`max-size: 10m`, `max-file: 3`), co chroni dysk przed zapełnieniem.
-* Dodaje bieżącego użytkownika do grupy `docker`.
+* Dodaje bieżącego użytkownika do grupy `docker` (jeśli jeszcze do niej nie należy).
 
 *Weryfikacja poprawności instalacji:*
 
@@ -75,9 +77,9 @@ docker run --rm hello-world
 
 ---
 
-## 🛡️ Krok 3: Instalacja Pi-hole + NAS (`setup_pihole_nas.sh`)
+## 🛡️ Krok 3: Instalacja Pi-hole + NAS + Watchtower (`setup_pihole_nas.sh`)
 
-Aby uruchomić blokowanie reklam w sieci lokalnej (Pi-hole) oraz serwer plików NAS (Samba + FileBrowser), wykonaj na Raspberry Pi 5:
+Aby uruchomić blokowanie reklam w sieci lokalnej (Pi-hole), serwer plików NAS (Samba + FileBrowser) oraz automatyczne aktualizacje kontenerów (Watchtower), wykonaj na Raspberry Pi 5:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/setup_pihole_nas.sh)
@@ -90,7 +92,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian
 2. Tworzy folder dla udostępnianych plików NAS (domyślnie `/srv/nas/pliki`) oraz folder konfiguracji kontenerów (`~/docker/pihole-nas`).
 3. Generuje plik `docker-compose.yml` dopasowany do Twoich ustawień.
 4. Inicjalizuje bazę danych **FileBrowsera** i tworzy konto administratora z Twoim własnym hasłem (wymagane min. 12 znaków).
-5. Uruchamia wszystkie kontenery w tle (`restart: unless-stopped`).
+5. Opcjonalnie dodaje kontener **Watchtower**, który codziennie o **04:00 w nocy** sprawdza dostępność nowych wersji uruchomionych kontenerów, aktualizuje je i czyści stare obrazy.
+6. Uruchamia wszystkie kontenery w tle (`restart: unless-stopped`).
 
 ---
 
@@ -119,12 +122,14 @@ Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych portów 
 docker ps
 ```
 
-* **Podgląd logów poszczególnych kontenerów:**
+* **Podgląd logów poszczególnych kontenerów oraz aktualizacji systemowych:**
 
 ```bash
 docker logs pihole
 docker logs samba-nas
 docker logs filebrowser-nas
+docker logs watchtower
+cat /var/log/auto-update.log
 ```
 
 * **Restart lub zatrzymanie wszystkich usług:**
