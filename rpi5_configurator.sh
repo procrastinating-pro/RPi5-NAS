@@ -6,7 +6,7 @@ GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0;m'
+NC='\033[0m'
 
 clear
 echo -e "${CYAN}======================================================${NC}"
@@ -111,7 +111,6 @@ if [[ "$OPT_SSH_KEY" =~ ^[TtYy]$ ]]; then
     fi
 
     if [ -n "$PUB_KEY" ]; then
-        # Domyślny pierwszy użytkownik w RPi OS otrzymuje UID 1000
         TARGET_SSH_DIR="$ROOT_MNT/home/${NOWY_USER:-pi}/.ssh"
         sudo mkdir -p "$TARGET_SSH_DIR"
         sudo cp "$PUB_KEY" "$TARGET_SSH_DIR/authorized_keys"

@@ -9,7 +9,7 @@ NC='\033[0m'
 
 clear
 echo -e "${CYAN}======================================================${NC}"
-echo -e "${CYAN}     KONFIGURATOR DOCKER: PI-HOLE + NAS (SAMBA/WWW)   ${NC}"
+echo -e "${CYAN}     KONFIGURATOR DOCKER: PI-HOLE + NAS + WATCHTOWER  ${NC}"
 echo -e "${CYAN}======================================================${NC}"
 
 ACTUAL_USER=${SUDO_USER:-$USER}
@@ -71,6 +71,10 @@ if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
         fi
     done
 fi
+
+echo -e "\n${YELLOW}[*] Konfiguracja automatycznych aktualizacji (Watchtower):${NC}"
+read -p "10. Dodać kontener Watchtower (auto-update obrazów i czyszczenie o 04:00)? (T/n): " OPT_WT
+OPT_WT=${OPT_WT:-T}
 
 echo -e "\n${CYAN}======================================================${NC}"
 
@@ -166,6 +170,23 @@ cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
 EOF
 fi
 
+if [[ "$OPT_WT" =~ ^[TtYy]$ ]]; then
+cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+
+  watchtower:
+    container_name: watchtower
+    image: containrrr/watchtower:latest
+    environment:
+      - TZ=Europe/Warsaw
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_STOPPED=true
+      - WATCHTOWER_SCHEDULE=0 0 4 * * *
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+EOF
+fi
+
 echo -e "${GREEN}[+] Plik docker-compose.yml został zapisany.${NC}"
 
 # ================= KROK 4: INICJALIZACJA BAZY FILEBROWSERA =================
@@ -173,7 +194,6 @@ cd "$DOCKER_DIR"
 
 if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
     echo -e "${YELLOW}[4/5] Konfiguracja konta '$FB_USER' w bazie FileBrowsera...${NC}"
-    # Jeśli kontener już działał wcześniej, zatrzymujemy go na czas edycji bazy
     sudo docker compose stop filebrowser >/dev/null 2>&1 || true
     sudo rm -f "$DOCKER_DIR/filebrowser/filebrowser.db"
 
@@ -197,5 +217,8 @@ echo -e "2. ${CYAN}NAS (Ubuntu/Linux):${NC} smb://${RPI_IP}/${SHARE_NAME} (Login
 echo -e "3. ${CYAN}NAS (Windows):${NC}      \\\\${RPI_IP}\\${SHARE_NAME}"
 if [[ "$OPT_FB" =~ ^[TtYy]$ ]]; then
     echo -e "4. ${CYAN}FileBrowser (WWW):${NC}  http://${RPI_IP}:${FB_PORT} (Login: ${FB_USER})"
+fi
+if [[ "$OPT_WT" =~ ^[TtYy]$ ]]; then
+    echo -e "5. ${CYAN}Watchtower:${NC}         Aktywny (Auto-update codziennie o 04:00)"
 fi
 echo -e "${CYAN}======================================================${NC}"
