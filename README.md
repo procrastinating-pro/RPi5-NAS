@@ -1,16 +1,31 @@
 # 🍓 Raspbian-Configurator (Raspberry Pi 5 Headless + Docker + Pi-hole + NAS + Auto-Maintenance)
 
-Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, instalację **Dockera** oraz wdrożenie domowego serwera **Pi-hole**, **NAS (Samba + FileBrowser)** i **Watchtower**.
+Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz wdrożenie domowego serwera **Pi-hole**, **NAS (Samba + FileBrowser)** i **Watchtower**.
+
+---
+
+## 🛠️ Sprzęt użyty w projekcie (Hardware)
+
+Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfiguracji sprzętowej:
+
+* **Płyta główna:** Raspberry Pi 5
+* **Adapter PCIe:** Raspberry Pi M.2 HAT+
+* **Dysk systemowy i NAS:** Raspberry Pi SSD (NVMe PCIe Gen 3) + dodatkowe radiatory chłodzące na dysku
+* **Chłodzenie procesora i obudowy:** Raspberry Pi Active Cooler (sterowany hybrydowo na podstawie temperatury CPU oraz czujnika S.M.A.R.T. dysku NVMe)
+* **Zasilanie:** Oficjalny zasilacz Raspberry Pi 27W USB-C PD (5.1V / 5A)
+* **Obudowa:** Dedykowana, podwyższona obudowa drukowana w 3D (projekt parametryczny w OpenSCAD mieszczący M.2 HAT+ wraz z wysokimi radiatorami na NVMe)
 
 ---
 
 ## 📂 Zawartość repozytorium
 
-| Skrypt | Gdzie uruchamiać? | Opis działania | 
+| Plik / Skrypt | Gdzie uruchamiać? | Opis działania | 
 | :--- | :--- | :--- | 
 | **`rpi5_configurator.sh`** | 💻 Na komputerze (np. Ubuntu) z podłączonym nośnikiem (SD/NVMe) | Konfiguruje czysty obraz przed pierwszym uruchomieniem: włącza SSH, tworzy użytkownika, wgrywa klucz SSH, ustawia statyczny IP (NetworkManager) i odblokowuje PCIe Gen 3 dla NVMe HAT+. | 
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
 | **`setup_pihole_nas.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny instalator kontenerów: zwalnia port 53 (`systemd-resolved`), tworzy strukturę katalogów i uruchamia **Pi-hole**, serwer **Samba (SMB)**, panel WWW **FileBrowser** oraz **Watchtower** (auto-update kontenerów o 04:00). | 
+| **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
+| **`rpi5_nvme_case.scad`** | 💻 Na komputerze (OpenSCAD) | Parametryczny model 3D podwyższonej obudowy z miejscem na M.2 HAT+, radiatory NVMe, wyprowadzeniem portów i grawerowanym logo na górnej pokrywie. | 
 
 ---
 
@@ -96,6 +111,21 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian
 
 ---
 
+## ❄️ Krok 4: Optymalizacja chłodzenia Active Cooler i NVMe (`setup_cooler.sh`)
+
+W zamkniętej obudowie z nakładką M.2 HAT+ i radiatorami na dysku SSD Gen 3 domyślna krzywa wentylatora (start od 50°C CPU) jest zbyt pasywna. Aby zapewnić stały obieg powietrza wokół radiatora NVMe, uruchom konfigurator chłodzenia:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/setup_cooler.sh)
+```
+
+**Co robi skrypt:**
+* Ustawia w `/boot/firmware/config.txt` zoptymalizowaną krzywą dla **Raspberry Pi Active Cooler** (lekki, bezgłośny przewiew w obudowie już od 38°C).
+* Instaluje pakiet `nvme-cli` oraz usługę systemową `nvme-fan-guard.service`, która odczytuje temperaturę S.M.A.R.T. dysku SSD i automatycznie zwiększa obroty wentylatora podczas dużych transferów plików przez NAS (nawet gdy sam procesor RPi 5 jest chłodny).
+* Tworzy polecenie diagnostyczne `rpi-temp`, pozwalające w dowolnej chwili sprawdzić temperatury oraz obroty wentylatora.
+
+---
+
 ## 🌐 Dostęp do usług po instalacji
 
 Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych portów z konfiguratora:
@@ -114,6 +144,14 @@ Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych portów 
 ---
 
 ## 🛠️ Przydatne komendy diagnostyczne
+
+* **Sprawdzenie temperatury CPU, dysku NVMe oraz obrotów Active Coolera:**
+
+```bash
+rpi-temp
+# lub podgląd na żywo co 2 sekundy:
+watch -n 2 rpi-temp
+```
 
 * **Sprawdzenie statusu uruchomionych kontenerów:**
 
