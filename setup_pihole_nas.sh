@@ -199,6 +199,7 @@ cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
     image: containrrr/watchtower:latest
     environment:
       - TZ=Europe/Warsaw
+      - DOCKER_API_VERSION=1.44
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_INCLUDE_STOPPED=true
       - WATCHTOWER_SCHEDULE=0 0 4 * * *

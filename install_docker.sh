@@ -25,8 +25,8 @@ sudo bash -c 'cat > /etc/cron.d/auto-system-maintenance' << 'EOF'
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
-# Codziennie o 03:30: update, upgrade, autoremove, autoclean oraz czyszczenie starych obrazów Dockera
-30 3 * * * root DEBIAN_FRONTEND=noninteractive apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get full-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" && apt-get autoremove -y && apt-get autoclean -y && docker image prune -af >> /var/log/auto-update.log 2>&1
+# Codziennie o 03:30: update, upgrade, autoremove, autoclean oraz czyszczenie starych obrazów Dockera (całość logowana do /var/log/auto-update.log)
+30 3 * * * root (echo "=== AUTO-UPDATE START: $(date) ===" && DEBIAN_FRONTEND=noninteractive apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get full-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" && apt-get autoremove -y && apt-get autoclean -y && docker image prune -af && echo "=== AUTO-UPDATE KONIEC: $(date) ===") >> /var/log/auto-update.log 2>&1
 EOF
 sudo chmod 644 /etc/cron.d/auto-system-maintenance
 
