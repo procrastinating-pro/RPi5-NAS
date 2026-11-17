@@ -1,5 +1,6 @@
 // ==============================================================================
-// OBUDOWA RASPBERRY PI 5 + M.2 HAT+ (WERSJA V10 - NÓŻKI TPU NA WCISK Z PIERŚCIENIEM)
+// OBUDOWA RASPBERRY PI 5 + M.2 HAT+ (WERSJA V11 - WYŻSZE OKNA USB-A +2 MM)
+// - Przednie okna na porty USB-A podwyższone o 2 mm (z 15.8 mm na 17.8 mm)
 // - Nóżki przeprojektowane specjalnie pod druk z elastycznego TPU (wcisk z nadwymiarowym
 //   czopem +0.15 mm, pierścieniem rozporowym +0.35 mm oraz 4 żebrami dociskowymi w gnieździe 5.4 mm!)
 // - Zwiększony luz wokół płytki PCB: pcb_clearance = 1.0 mm (łatwiejsze wkładanie płytki)
@@ -245,14 +246,14 @@ module bottom_m25_and_foot_holes() {
 }
 
 // ==============================================================================
-// WYCIĘCIA NA PORTY (PEŁNE OKIENKA Z PRZODU I Z BOKU, TYŁ CAŁKOWICIE ZAMKNIĘTY!)
+// WYCIĘCIA NA PORTY (OKNA USB-A PODWYŻSZONE O 2 MM: Z 15.8 MM NA 17.8 MM!)
 // ==============================================================================
 module port_cutouts() {
     translate([pcb_x0, pcb_y0, 0]) {
-        // 1. PRZÓD (x = pcb_l): Całe okienka na Ethernet oraz 2x podwójne USB w dolnej obudowie
+        // 1. PRZÓD (x = pcb_l): Ethernet (14.8 mm) oraz 2x podwójne USB-A podwyższone o 2 mm (17.8 mm!)
         translate([pcb_l - 2, 10.25 - 8.5, pcb_z0 - 0.5]) cube([wall + 10, 17.0, 14.8]);
-        translate([pcb_l - 2, 29.0 - 7.8, pcb_z0 - 0.5]) cube([wall + 10, 15.6, 15.8]);
-        translate([pcb_l - 2, 47.0 - 7.8, pcb_z0 - 0.5]) cube([wall + 10, 15.6, 15.8]);
+        translate([pcb_l - 2, 29.0 - 7.8, pcb_z0 - 0.5]) cube([wall + 10, 15.6, 17.8]);
+        translate([pcb_l - 2, 47.0 - 7.8, pcb_z0 - 0.5]) cube([wall + 10, 15.6, 17.8]);
 
         // 2. BOK LEWY (y = 0): Całe okienka na USB-C (zasilanie) oraz 2x micro-HDMI
         translate([11.2 - 5.5, -wall - 5, pcb_z0 - 1.0]) cube([11.0, wall + 10, 6.2]);
@@ -380,15 +381,10 @@ module top_part() {
 // NÓŻKA ZOPTYMALIZOWANA POD DRUK Z TPU (CIASNY WCISK + PIERŚCIEŃ ROZPOROWY + 2 STOPNIE)
 // ==============================================================================
 module single_foot_for_print() {
-    // 1. Pierwszy stopień czopa (wchodzi w gniazdo 8.0 mm na głębokość 2.2 mm):
-    // Ma nadwymiar +0.15 mm (8.15 mm) oraz pierścień rozporowy +0.35 mm (8.35 mm),
-    // dzięki czemu elastyczne TPU wciska się z wyczuwalnym oporem i nie wypada przy podnoszeniu NAS-a!
     plug1_d = foot_socket_d + foot_tpu_oversize;
     plug1_rib_d = foot_socket_d + foot_tpu_rib_oversize;
     plug1_h = foot_socket_h;
 
-    // 2. Drugi, wyższy stopień czopa (wchodzi głębiej w kanał 5.4 mm pod śrubę, poniżej jej łba):
-    // Dodaje 1.4 mm prowadzenia na średnicy 5.55 mm z 4 elastycznymi wypustkami!
     plug2_d = m25_head_pocket_d + foot_tpu_oversize;
     plug2_h = foot_inner_collar_h;
 
@@ -418,12 +414,11 @@ module single_foot_for_print() {
                 cylinder(d1 = plug2_d, d2 = plug2_d - 0.8, h = 0.4);
         }
 
-        // Wewnętrzna kieszeń odciążająca (d = 3.6 mm) - pozwala ściance TPU ugiąć się do środka podczas wciskania,
-        // a jednocześnie zostawia miejsce na ewentualny niższy łeb śruby!
+        // Wewnętrzna kieszeń odciążająca (d = 3.6 mm)
         translate([0, 0, 2.2])
             cylinder(d = 3.6, h = foot_air_gap_h + plug1_h + plug2_h + 1.0);
 
-        // 2 krzyżowe nacięcia kompensacyjne na samym czubku czopa (ułatwiają włożenie nadwymiarowego TPU w krawędź otworu)
+        // 2 krzyżowe nacięcia kompensacyjne na samym czubku czopa
         for (rot_a = [0, 90]) {
             rotate([0, 0, rot_a])
                 translate([-0.4, -plug1_rib_d, foot_air_gap_h + 0.8])
@@ -473,7 +468,7 @@ if (render_mode == "bottom") {
         rotate([180, 0, 0])
             top_part();
 } else if (render_mode == "all") {
-    // 1. Pełna dolna obudowa (z pcb_clearance = 1.0 mm)
+    // 1. Pełna dolna obudowa (z pcb_clearance = 1.0 mm i wyższymi o 2 mm oknami USB-A)
     bottom_part();
     // 2. Płaski dekiel górny (ze stałym rozstawem otworów 83.8 x 46.8 mm pod wydrukowany Badge!)
     translate([0, outer_w * 2 + 10, outer_h])
