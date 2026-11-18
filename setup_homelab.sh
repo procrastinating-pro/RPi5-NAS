@@ -31,25 +31,40 @@ DOCKER_DIR=${DOCKER_DIR:-/home/$ACTUAL_USER/docker/homelab}
 
 # ================= 2. WYBÓR KONTENERÓW (T/N) =================
 echo -e "\n${YELLOW}[*] KROK 2: Wybierz kontenery do zainstalowania (T/n):${NC}"
-read -p "   -> [1/7] Pi-hole (Blokada reklam + Lokalny DNS)? [T/n]: " OPT_PIHOLE
+read -p "   -> [1/11] Pi-hole (Blokada reklam + Lokalny DNS)? [T/n]: " OPT_PIHOLE
 OPT_PIHOLE=${OPT_PIHOLE:-T}
 
-read -p "   -> [2/7] Samba NAS (Udział sieciowy SMB Windows/Linux)? [T/n]: " OPT_SAMBA
+read -p "   -> [2/11] Samba NAS (Udział sieciowy SMB Windows/Linux)? [T/n]: " OPT_SAMBA
 OPT_SAMBA=${OPT_SAMBA:-T}
 
-read -p "   -> [3/7] FileBrowser (Webowy menedżer plików NAS)? [T/n]: " OPT_FB
+read -p "   -> [3/11] FileBrowser (Webowy menedżer plików NAS)? [T/n]: " OPT_FB
 OPT_FB=${OPT_FB:-T}
 
-read -p "   -> [4/7] Twingate Connector (Zdalny dostęp Zero-Trust)? [t/N]: " OPT_TG
+read -p "   -> [4/11] Twingate Connector (Zdalny dostęp Zero-Trust)? [t/N]: " OPT_TG
 OPT_TG=${OPT_TG:-N}
 
-read -p "   -> [5/7] Vaultwarden (Lokalny menedżer haseł Bitwarden)? [t/N]: " OPT_VW
+read -p "   -> [5/11] Vaultwarden (Lokalny menedżer haseł Bitwarden)? [t/N]: " OPT_VW
 OPT_VW=${OPT_VW:-N}
 
-read -p "   -> [6/7] Jellyfin (Serwer wideo i multimediów - port 8096)? [t/N]: " OPT_JF
+read -p "   -> [6/11] Jellyfin (Serwer wideo i multimediów - port 8096)? [t/N]: " OPT_JF
 OPT_JF=${OPT_JF:-N}
 
-read -p "   -> [7/7] Watchtower (Auto-update kontenerów o 04:00)? [T/n]: " OPT_WT
+read -p "   -> [7/11] qBittorrent (Klient torrent WebUI - port 8085)? [t/N]: " OPT_QB
+OPT_QB=${OPT_QB:-N}
+
+read -p "   -> [8/11] Prowlarr (Menedżer indekserów dla *arr - port 9696)? [t/N]: " OPT_PROWLARR
+OPT_PROWLARR=${OPT_PROWLARR:-N}
+
+read -p "   -> [9/11] Sonarr (Automatyzacja seriali - port 8989)? [t/N]: " OPT_SONARR
+OPT_SONARR=${OPT_SONARR:-N}
+
+read -p "   -> [10/11] Radarr (Automatyzacja filmów - port 7878)? [t/N]: " OPT_RADARR
+OPT_RADARR=${OPT_RADARR:-N}
+
+read -p "   -> [11/11] Bazarr (Automatyczne napisy do filmów i seriali - port 6767)? [t/N]: " OPT_BAZARR
+OPT_BAZARR=${OPT_BAZARR:-N}
+
+read -p "   -> [Extra] Watchtower (Auto-update kontenerów o 04:00)? [T/n]: " OPT_WT
 OPT_WT=${OPT_WT:-T}
 
 # ================= 3. SZCZEGÓŁOWE PYTANIA TYLKO DLA WYBRANYCH =================
@@ -120,11 +135,18 @@ if [[ "$OPT_VW" =~ ^[TtYy]$ ]]; then
     VW_PORT=${VW_PORT:-8222}
 fi
 
+if [[ "$OPT_QB" =~ ^[TtYy]$ ]]; then
+    echo -e "\n${YELLOW}[*] Konfiguracja qBittorrent:${NC}"
+    read -p "   -> Port panelu WWW qBittorrent [8085]: " QB_PORT
+    QB_PORT=${QB_PORT:-8085}
+fi
+
 echo -e "\n${CYAN}======================================================${NC}"
 
-# ================= 4. PRZYGOTOWANIE KATALOGÓW =================
+# ================= 4. PRZYGOTOWANIE KATALOGÓW (TRASH-GUIDES HARDLINKS) =================
 echo -e "${YELLOW}[1/4] Tworzenie struktury katalogów w $NAS_DIR oraz $DOCKER_DIR...${NC}"
-sudo mkdir -p "$NAS_DIR"/media/{movies,tv,music}
+# Wspólna struktura dla hardlinków między qBittorrent (/data/downloads) a Radarr/Sonarr/Bazarr/Jellyfin (/data/media)
+sudo mkdir -p "$NAS_DIR"/{media/{movies,tv,music},downloads/{complete,incomplete}}
 sudo chown -R "$ACTUAL_USER:$ACTUAL_USER" "$(dirname "$NAS_DIR")"
 sudo chmod -R 775 "$NAS_DIR"
 
@@ -301,6 +323,119 @@ if [[ "$OPT_JF" =~ ^[TtYy]$ ]]; then
 EOF
 fi
 
+# --- QBITTORRENT ---
+if [[ "$OPT_QB" =~ ^[TtYy]$ ]]; then
+    mkdir -p "$DOCKER_DIR/qbittorrent"
+    sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/qbittorrent"
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+
+  qbittorrent:
+    container_name: qbittorrent
+    image: lscr.io/linuxserver/qbittorrent:latest
+    environment:
+      - PUID=${USER_UID}
+      - PGID=${USER_GID}
+      - TZ=Europe/Warsaw
+      - WEBUI_PORT=${QB_PORT}
+      - TORRENTING_PORT=6881
+    ports:
+      - "${QB_PORT}:${QB_PORT}"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      - './qbittorrent:/config'
+      - '${NAS_DIR}/downloads:/data/downloads'
+    restart: unless-stopped
+EOF
+fi
+
+# --- PROWLARR ---
+if [[ "$OPT_PROWLARR" =~ ^[TtYy]$ ]]; then
+    mkdir -p "$DOCKER_DIR/prowlarr"
+    sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/prowlarr"
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+
+  prowlarr:
+    container_name: prowlarr
+    image: lscr.io/linuxserver/prowlarr:latest
+    environment:
+      - PUID=${USER_UID}
+      - PGID=${USER_GID}
+      - TZ=Europe/Warsaw
+    ports:
+      - "9696:9696"
+    volumes:
+      - './prowlarr:/config'
+    restart: unless-stopped
+EOF
+fi
+
+# --- SONARR ---
+if [[ "$OPT_SONARR" =~ ^[TtYy]$ ]]; then
+    mkdir -p "$DOCKER_DIR/sonarr"
+    sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/sonarr"
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+
+  sonarr:
+    container_name: sonarr
+    image: lscr.io/linuxserver/sonarr:latest
+    environment:
+      - PUID=${USER_UID}
+      - PGID=${USER_GID}
+      - TZ=Europe/Warsaw
+    ports:
+      - "8989:8989"
+    volumes:
+      - './sonarr:/config'
+      - '${NAS_DIR}:/data'
+    restart: unless-stopped
+EOF
+fi
+
+# --- RADARR ---
+if [[ "$OPT_RADARR" =~ ^[TtYy]$ ]]; then
+    mkdir -p "$DOCKER_DIR/radarr"
+    sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/radarr"
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+
+  radarr:
+    container_name: radarr
+    image: lscr.io/linuxserver/radarr:latest
+    environment:
+      - PUID=${USER_UID}
+      - PGID=${USER_GID}
+      - TZ=Europe/Warsaw
+    ports:
+      - "7878:7878"
+    volumes:
+      - './radarr:/config'
+      - '${NAS_DIR}:/data'
+    restart: unless-stopped
+EOF
+fi
+
+# --- BAZARR ---
+if [[ "$OPT_BAZARR" =~ ^[TtYy]$ ]]; then
+    mkdir -p "$DOCKER_DIR/bazarr"
+    sudo chown -R "$USER_UID:$USER_GID" "$DOCKER_DIR/bazarr"
+    cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
+
+  bazarr:
+    container_name: bazarr
+    image: lscr.io/linuxserver/bazarr:latest
+    environment:
+      - PUID=${USER_UID}
+      - PGID=${USER_GID}
+      - TZ=Europe/Warsaw
+    ports:
+      - "6767:6767"
+    volumes:
+      - './bazarr:/config'
+      - '${NAS_DIR}/media:/data/media'
+    restart: unless-stopped
+EOF
+fi
+
 # --- WATCHTOWER ---
 if [[ "$OPT_WT" =~ ^[TtYy]$ ]]; then
     cat >> "$DOCKER_DIR/docker-compose.yml" <<EOF
@@ -343,14 +478,19 @@ sudo docker compose up -d
 
 echo -e "\n${CYAN}======================================================${NC}"
 echo -e "${GREEN}[SUKCES] Wybrane usługi działają w tle!${NC}"
-echo -e "Katalog danych NAS:  ${YELLOW}${NAS_DIR}${NC} (w tym /media/movies, /media/tv, /media/music)"
+echo -e "Katalog danych NAS:  ${YELLOW}${NAS_DIR}${NC} (w tym /media/movies, /media/tv, /downloads)"
 echo -e "Plik Compose:        ${YELLOW}${DOCKER_DIR}/docker-compose.yml${NC}"
 echo -e "------------------------------------------------------"
-[[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]] && echo -e "Pi-hole:      http://${RPI_IP}:${PIHOLE_PORT}/admin"
-[[ "$OPT_SAMBA" =~ ^[TtYy]$ ]]  && echo -e "Samba SMB:    smb://${RPI_IP}/${SHARE_NAME} (Windows: \\\\${RPI_IP}\\${SHARE_NAME})"
-[[ "$OPT_FB" =~ ^[TtYy]$ ]]     && echo -e "FileBrowser:  http://${RPI_IP}:${FB_PORT}"
-[[ "$OPT_VW" =~ ^[TtYy]$ ]]     && echo -e "Vaultwarden:  http://${RPI_IP}:${VW_PORT}"
-[[ "$OPT_JF" =~ ^[TtYy]$ ]]     && echo -e "Jellyfin:     http://${RPI_IP}:8096 (Foldery w Jellyfin: /data/media/movies oraz /data/media/tv)"
-[[ "$OPT_TG" =~ ^[TtYy]$ ]]     && echo -e "Twingate:     Aktywny w trybie hosta (logi: sudo docker logs twingate-connector)"
-[[ "$OPT_WT" =~ ^[TtYy]$ ]]     && echo -e "Watchtower:   Aktywny (Auto-update codziennie o 04:00)"
+[[ "$OPT_PIHOLE" =~ ^[TtYy]$ ]]   && echo -e "Pi-hole:      http://${RPI_IP}:${PIHOLE_PORT}/admin"
+[[ "$OPT_SAMBA" =~ ^[TtYy]$ ]]    && echo -e "Samba SMB:    smb://${RPI_IP}/${SHARE_NAME} (Windows: \\\\${RPI_IP}\\${SHARE_NAME})"
+[[ "$OPT_FB" =~ ^[TtYy]$ ]]       && echo -e "FileBrowser:  http://${RPI_IP}:${FB_PORT}"
+[[ "$OPT_VW" =~ ^[TtYy]$ ]]       && echo -e "Vaultwarden:  http://${RPI_IP}:${VW_PORT}"
+[[ "$OPT_JF" =~ ^[TtYy]$ ]]       && echo -e "Jellyfin:     http://${RPI_IP}:8096 (Foldery: /data/media/movies oraz /data/media/tv)"
+[[ "$OPT_QB" =~ ^[TtYy]$ ]]       && echo -e "qBittorrent:  http://${RPI_IP}:${QB_PORT} (Domyślny login: admin, hasło tymczasowe: sudo docker logs qbittorrent)"
+[[ "$OPT_PROWLARR" =~ ^[TtYy]$ ]] && echo -e "Prowlarr:     http://${RPI_IP}:9696"
+[[ "$OPT_SONARR" =~ ^[TtYy]$ ]]   && echo -e "Sonarr:       http://${RPI_IP}:8989 (Root Folder: /data/media/tv)"
+[[ "$OPT_RADARR" =~ ^[TtYy]$ ]]   && echo -e "Radarr:       http://${RPI_IP}:7878 (Root Folder: /data/media/movies)"
+[[ "$OPT_BAZARR" =~ ^[TtYy]$ ]]   && echo -e "Bazarr:       http://${RPI_IP}:6767"
+[[ "$OPT_TG" =~ ^[TtYy]$ ]]       && echo -e "Twingate:     Aktywny w trybie hosta (logi: sudo docker logs twingate-connector)"
+[[ "$OPT_WT" =~ ^[TtYy]$ ]]       && echo -e "Watchtower:   Aktywny (Auto-update codziennie o 04:00)"
 echo -e "${CYAN}======================================================${NC}"
