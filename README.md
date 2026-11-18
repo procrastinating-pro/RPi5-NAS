@@ -1,6 +1,6 @@
-# 🍓 Raspbian-Configurator (Raspberry Pi 5 Headless + Docker HomeLab + NAS + Auto-Maintenance)
+# 🍓 Raspbian-Configurator (Raspberry Pi 5 Headless + Docker HomeLab + NAS + Media Stack + Auto-Maintenance)
 
-Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz modułowe wdrożenie domowego serwera **HomeLab & NAS** (**Pi-hole**, **Samba**, **FileBrowser**, **Twingate**, **Vaultwarden**, **Jellyfin** oraz **Watchtower**).
+Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz modułowe wdrożenie domowego serwera **HomeLab, NAS & Media Stack** (**Pi-hole**, **Samba**, **FileBrowser**, **Twingate**, **Vaultwarden**, **Jellyfin**, **qBittorrent**, **Prowlarr**, **Sonarr**, **Radarr**, **Bazarr** oraz **Watchtower**).
 
 ## 🛠️ Sprzęt użyty w projekcie (Hardware)
 
@@ -19,7 +19,8 @@ Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfi
 | ----- | ----- | ----- | 
 | **`rpi5_configurator.sh`** | 💻 Na komputerze (np. Ubuntu) z podłączonym nośnikiem (SD/NVMe) | Konfiguruje czysty obraz przed pierwszym uruchomieniem: włącza SSH, tworzy użytkownika, wgrywa klucz SSH, ustawia statyczny IP (NetworkManager) i odblokowuje PCIe Gen 3 dla NVMe HAT+. | 
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
-| **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator kontenerów (Czysty Bash `[T/n]`): pozwala wybrać i skonfigurować dowolną kombinację 7 usług: **Pi-hole**, **Samba (SMB)**, **FileBrowser**, **Twingate Connector**, **Vaultwarden**, **Jellyfin** oraz **Watchtower** (auto-update o 04:00). | 
+| **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator kontenerów (Czysty Bash `[T/n]`): pozwala wybrać i skonfigurować dowolną kombinację 11 usług + Watchtower: **Pi-hole**, **Samba (SMB)**, **FileBrowser**, **Twingate Connector**, **Vaultwarden**, **Jellyfin**, **qBittorrent**, **Prowlarr**, **Sonarr**, **Radarr**, **Bazarr** oraz **Watchtower** (auto-update o 04:00). | 
+| **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator środowiska HomeLab (z podwójnym potwierdzeniem): zatrzymuje i usuwa kontenery, czyści obrazy i sieci Dockera, kasuje katalog `~/docker/homelab`, przywraca domyślny stan `systemd-resolved` (port 53) oraz opcjonalnie usuwa dane z dysku NAS (`/srv/nas/pliki`). | 
 | **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
 | **`diagnose_and_fix_fan.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Narzędzie diagnostyczno-naprawcze dla **Active Coolera**: skanuje partycje `bootfs` oraz `rootfs` (w tym konflikty SD vs NVMe), czyści błędne reguły `udev`/`systemd`, przywraca czystą konfigurację w `config.txt` i wykonuje sprzętowy test linii PWM (`0` vs `255`). | 
 | **`rpi5_nvme_case.scad`** | 💻 Na komputerze (OpenSCAD) | Parametryczny model 3D podwyższonej obudowy z miejscem na M.2 HAT+, radiatory NVMe, przedłużoną komorą na taśmę PCIe, uniesionym dachem z logo (*Badge*) oraz nóżkami dystansowymi pod druk z elastycznego TPU. | 
@@ -29,6 +30,7 @@ Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfi
 Zamiast korzystać z wbudowanego kreatora w Raspberry Pi Imagerze (który bywa zawodny), wgraj czysty obraz **Raspberry Pi OS Lite (64-bit)** na kartę SD lub dysk NVMe (wybierając **NO** przy pytaniu o *OS customisation*).
 
 1. Wyjmij i ponownie podłącz nośnik do komputera, aby system zamontował partycje **`bootfs`** oraz **`rootfs`**.
+
 2. Uruchom interaktywny konfigurator bezpośrednio z terminala:
 
 ```bash
@@ -85,7 +87,7 @@ curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Config
 docker run --rm hello-world
 ```
 
-## 🛡️ Krok 3: Instalacja usług HomeLab & NAS (`setup_homelab.sh`)
+## 🛡️ Krok 3: Instalacja usług HomeLab, NAS & Media Stack (`setup_homelab.sh`)
 
 Aby uruchomić wybrane usługi domowego serwera (z możliwością wyboru `[T/n]` dla każdego kontenera), wykonaj na Raspberry Pi 5:
 
@@ -95,15 +97,43 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian
 
 *(Uwaga: Użycie składni `bash <(curl ...)` jest wymagane, ponieważ skrypt działa interaktywnie i pobiera od Ciebie wybór kontenerów, hasła, tokeny oraz ścieżki z klawiatury).*
 
-**Dostępne kontenery do wyboru w kreatorze `[1/7 – 7/7]`:**
+**Dostępne kontenery do wyboru w kreatorze `[1/11 – 11/11 + Extra]`:**
 
-1. **Pi-hole:** Blokowanie reklam w całej sieci LAN oraz lokalny serwer DNS (automatycznie zwalnia port `53` z `systemd-resolved` i konfiguruje lokalne domeny `.home`).
-2. **Samba NAS:** Dysk sieciowy SMB/CIFS widoczny w systemach Windows, Linux oraz macOS.
-3. **FileBrowser:** Nowoczesny menedżer plików NAS przez przeglądarkę WWW (automatycznie inicjalizuje bazę i tworzy konto administratora z hasłem o dł. min. 12 znaków).
-4. **Twingate Connector:** Bezpieczny, zdalny dostęp Zero-Trust spoza domu w trybie `network_mode: host` (bez konieczności przekierowywania portów na routerze i z pełną obsługą lokalnych domen `.home`).
-5. **Vaultwarden:** Lekki, lokalny serwer menedżera haseł kompatybilny z oficjalnymi aplikacjami Bitwarden.
-6. **Jellyfin:** Domowy serwer multimediów i wideo z mapowaniem sprzętowej akceleracji `/dev/dri` oraz automatycznie przygotowaną strukturą folderów (`/media/movies`, `/media/tv`, `/media/music`).
-7. **Watchtower:** Automatyczna aktualizacja wszystkich uruchomionych kontenerów i czyszczenie starych obrazów codziennie o 04:00 rano (z wymuszonym `DOCKER_API_VERSION=1.44`).
+ 1. **Pi-hole:** Blokowanie reklam w całej sieci LAN oraz lokalny serwer DNS (automatycznie zwalnia port `53` z `systemd-resolved` i konfiguruje lokalne domeny `.home`).
+ 2. **Samba NAS:** Dysk sieciowy SMB/CIFS widoczny w systemach Windows, Linux oraz macOS.
+ 3. **FileBrowser:** Nowoczesny menedżer plików NAS przez przeglądarkę WWW (automatycznie inicjalizuje bazę i tworzy konto administratora z hasłem o dł. min. 12 znaków).
+ 4. **Twingate Connector:** Bezpieczny, zdalny dostęp Zero-Trust spoza domu w trybie `network_mode: host` (bez konieczności przekierowywania portów na routerze i z pełną obsługą lokalnych domen `.home`).
+ 5. **Vaultwarden:** Lekki, lokalny serwer menedżera haseł kompatybilny z oficjalnymi aplikacjami Bitwarden.
+ 6. **Jellyfin:** Domowy serwer multimediów i wideo z mapowaniem sprzętowej akceleracji `/dev/dri` oraz automatycznie przygotowaną strukturą folderów (`/media/movies`, `/media/tv`, `/media/music`).
+ 7. **qBittorrent:** Klient sieci BitTorrent z interfejsem WebUI (domyślnie na porcie `8085`, aby nie kolidować z Pi-hole) oraz obsługą portów `6881` TCP/UDP.
+ 8. **Prowlarr:** Centralny menedżer indekserów (trackerów), który automatycznie synchronizuje listę wyszukiwarek z aplikacjami Sonarr i Radarr.
+ 9. **Sonarr:** Automatyzacja pobierania, sortowania i aktualizacji kolekcji seriali TV (z obsługą błyskawicznych *hardlinków* na dysku NVMe).
+10. **Radarr:** Automatyzacja pobierania, sortowania i aktualizacji kolekcji filmów (z obsługą *hardlinków*).
+11. **Bazarr:** Automatyczne wyszukiwanie i pobieranie dopasowanych napisów (np. polskich) do filmów i seriali zgromadzonych w Radarr oraz Sonarr.
+* **\[Extra\] Watchtower:** Automatyczna aktualizacja wszystkich uruchomionych kontenerów i czyszczenie starych obrazów codziennie o 04:00 rano (z wymuszonym `DOCKER_API_VERSION=1.44`).
+
+### 🎬 Konfiguracja i spięcie pakietu \*arr + qBittorrent + Jellyfin (Hardlinki)
+
+Skrypt `setup_homelab.sh` automatycznie tworzy na dysku NVMe architekturę katalogów zgodną z wytycznymi **TRaSH-Guides**:
+
+* `/srv/nas/pliki/downloads/complete` (widoczny w kontenerach jako `/data/downloads/complete`)
+* `/srv/nas/pliki/media/movies` (widoczny w kontenerach jako `/data/media/movies`)
+* `/srv/nas/pliki/media/tv` (widoczny w kontenerach jako `/data/media/tv`)
+
+Dzięki wspólnemu wolumenowi `/data`, przenoszenie pobranych plików z qBittorrenta do biblioteki Jellyfin przez Sonarr/Radarr odbywa się poprzez **twarde dowiązania (hardlinks)** – trwa ułamek sekundy, nie zużywa podwójnie miejsca na dysku podczas seedowania i nie obciąża dysku NVMe zbędnym kopiowaniem.
+
+**Krótka ściąga po pierwszym uruchomieniu:**
+
+1. **qBittorrent (`:8085`):** Odczytaj tymczasowe hasło z logów komendą `sudo docker logs qbittorrent`, zaloguj się jako `admin`, a następnie w *Tools -> Options -> Web UI* ustaw własne hasło. W zakładce *Downloads* upewnij się, że domyślna ścieżka zapisu (*Default Save Path*) to `/data/downloads/complete`.
+2. **Sonarr (`:8989`) i Radarr (`:7878`):**
+   * W *Settings -> Media Management -> Add Root Folder* wybierz odpowiednio `/data/media/tv` (w Sonarr) oraz `/data/media/movies` (w Radarr).
+   * W *Settings -> Download Clients* dodaj **qBittorrent** (Host: `qbittorrent` lub IP maliny, Port: `8085`, login i nowe hasło).
+3. **Prowlarr (`:9696`):**
+   * W *Settings -> Apps* dodaj **Sonarr** (`http://sonarr:8989`) oraz **Radarr** (`http://radarr:7878`), wklejając ich klucze API (znajdziesz je w *Settings -> General* w Sonarr/Radarr). Od teraz każdy dodany w Prowlarr indekser automatycznie pojawi się w obu programach.
+4. **Bazarr (`:6767`):**
+   * W *Settings -> Sonarr* oraz *Settings -> Radarr* połącz obie aplikacje po kluczu API, a w *Settings -> Languages* ustaw język polski jako domyślny profil napisów.
+5. **Jellyfin (`:8096`):**
+   * W *Panelu administracyjnym -> Biblioteki* dodaj bibliotekę **Filmy** wskazującą na `/data/media/movies` oraz bibliotekę **Programy (Shows)** wskazującą na `/data/media/tv`.
 
 ### ⚠️ Ważne: Konfiguracja DNS na routerze
 
@@ -141,25 +171,33 @@ bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian
 
 Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych lokalnych domen DNS:
 
-* **Panel administracyjny Pi-hole:**
-  * Adres WWW: `http://pihole.home:8080/admin` (lub `http://192.168.1.250:8080/admin`)
-  * Logowanie: Hasło podane podczas konfiguracji Pi-hole.
+| Usługa | Adres w sieci LAN / Domena `.home` | Domyślne logowanie / Uwagi | 
+| ----- | ----- | ----- | 
+| **Pi-hole** | `http://pihole.home:8080/admin` (`http://192.168.1.250:8080/admin`) | Hasło podane w konfiguratorze Pi-hole. | 
+| **Samba NAS (SMB)** | Linux: `smb://nas.home/DyskNAS` / Windows: `\\nas.home\DyskNAS` | Login i hasło Samby podane w konfiguratorze. | 
+| **FileBrowser** | `http://nas.home:8081` (`http://192.168.1.250:8081`) | Login: `admin` + własne hasło (min. 12 znaków). | 
+| **Vaultwarden** | `http://vault.home:8222` (`http://192.168.1.250:8222`) | Utwórz konto w przeglądarce (wymaga HTTPS/Twingate dla WebCrypto). | 
+| **Jellyfin** | `http://media.home:8096` (`http://192.168.1.250:8096`) | Kreator przy pierwszym wejściu (biblioteki: `/data/media/movies`, `/data/media/tv`). | 
+| **qBittorrent** | `http://media.home:8085` (`http://192.168.1.250:8085`) | Login: `admin`, hasło tymczasowe: `sudo docker logs qbittorrent`. | 
+| **Prowlarr** | `http://media.home:9696` (`http://192.168.1.250:9696`) | Centralny menedżer indekserów (ustaw hasło przy pierwszym wejściu). | 
+| **Sonarr** | `http://media.home:8989` (`http://192.168.1.250:8989`) | Seriale TV (Root Folder: `/data/media/tv`). | 
+| **Radarr** | `http://media.home:7878` (`http://192.168.1.250:7878`) | Filmy (Root Folder: `/data/media/movies`). | 
+| **Bazarr** | `http://media.home:6767` (`http://192.168.1.250:6767`) | Automatyczne napisy (połącz z Sonarr i Radarr po API). | 
+| **Twingate** | Działa w tle (`network_mode: host`) | Logi połączenia: `sudo docker logs twingate-connector`. | 
+| **Watchtower** | Działa w tle (harmonogram Cron `04:00`) | Logi aktualizacji: `sudo docker logs watchtower`. | 
 
-* **Dysk sieciowy NAS (Samba / SMB):**
-  * **Linux (Ubuntu / menedżer plików):** `smb://nas.home/DyskNAS` (lub `smb://192.168.1.250/DyskNAS`)
-  * **Windows (Eksplorator plików):** `\\nas.home\DyskNAS` (lub `\\192.168.1.250\DyskNAS`)
-  * Logowanie: Użytkownik i hasło Samby podane w konfiguratorze.
+## 🗑️ Całkowita deinstalacja i czyszczenie środowiska (`uninstall_homelab.sh`)
 
-* **Zarządzanie plikami NAS przez przeglądarkę (FileBrowser):**
-  * Adres WWW: `http://nas.home:8081` (lub `http://192.168.1.250:8081`)
-  * Logowanie: Użytkownik (domyślnie `admin`) oraz własne hasło (min. 12 znaków) ustawione w konfiguratorze.
+Jeśli chcesz zresetować całe środowisko Docker HomeLab, usunąć wszystkie kontenery oraz ich konfigurację i zacząć od czystego stanu, uruchom skrypt deinstalacyjny:
 
-* **Serwer multimediów (Jellyfin):**
-  * Adres WWW: `http://media.home:8096` (lub `http://192.168.1.250:8096`)
-  * Ścieżki bibliotek wewnątrz kontenera: `/data/media/movies`, `/data/media/tv`, `/data/media/music` (odpowiadają folderom w `/srv/nas/pliki/media/`).
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/uninstall_homelab.sh)
+```
 
-* **Menedżer haseł (Vaultwarden):**
-  * Adres WWW: `http://vault.home:8222` (lub `http://192.168.1.250:8222`)
+**Zabezpieczenia i etapy działania deinstalatora:**
+
+1. **Potwierdzenie usunięcia kontenerów (`TAK`):** Skrypt zatrzymuje i usuwa wszystkie kontenery (`docker compose down -v`), czyści nieużywane sieci oraz pobrane obrazy (`docker image prune -a -f`), kasuje katalog konfiguracyjny `~/docker/homelab` i przywraca domyślne ustawienia `systemd-resolved` dla portu `53`.
+2. **Ochrona danych na dysku NAS (`USUN_DANE`):** Twoje pobrane filmy, seriale i pliki prywatne w `/srv/nas/pliki` są domyślnie **chronione**. Zostaną usunięte wyłącznie wtedy, gdy w drugim kroku jawnie wpiszesz z klawiatury frazę `USUN_DANE`.
 
 ## 🛠️ Przydatne komendy diagnostyczne
 
@@ -216,12 +254,15 @@ docker ps
 docker logs pihole
 docker logs samba-nas
 docker logs filebrowser-nas
-docker logs twingate-connector
 docker logs jellyfin
-docker logs vaultwarden
+docker logs qbittorrent
+docker logs prowlarr
+docker logs sonarr
+docker logs radarr
+docker logs bazarr
 ```
 
-* **Restart lub zatrzymanie wszystkich usług HomeLab:**
+* **Restart lub zatrzymanie wszystkich usług:**
 
 ```bash
 cd ~/docker/homelab
