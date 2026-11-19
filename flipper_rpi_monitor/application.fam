@@ -1,0 +1,14 @@
+App(
+    appid="rpi_monitor",
+    name="RPi 5 Monitor",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="rpi_monitor_app",
+    requires=[
+        "gui",
+        "bt",
+        "storage",
+    ],
+    stack_size=2 * 1024,
+    fap_category="Bluetooth",
+    fap_description="BLE system monitor for Raspberry Pi 5",
+)
