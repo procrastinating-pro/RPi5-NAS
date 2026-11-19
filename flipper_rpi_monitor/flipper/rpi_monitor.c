@@ -1,11 +1,14 @@
 #include <furi.h>
 #include <furi_hal.h>
 #include <furi_hal_bt.h>
+#include <furi_hal_version.h>
 #include <bt/bt_service/bt.h>
 #include <profiles/serial_profile.h>
+#include <services/serial_service.h>
 #include <gui/gui.h>
 #include <input/input.h>
 #include <storage/storage.h>
+#include <notification/notification_messages.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +17,52 @@
 #define TAG "RpiMonitor"
 #define BT_SERIAL_BUFFER_SIZE 128
 #define DATA_TIMEOUT_MS 6000
+
+// --- Wlasny profil BLE Serial (bezposrednio na BleServiceSerial) ---
+typedef struct {
+    FuriHalBleProfileBase base;
+    BleServiceSerial* serial_svc;
+} RpiBleProfile;
+
+static const FuriHalBleProfileTemplate rpi_ble_profile;
+
+static FuriHalBleProfileBase* rpi_ble_start(FuriHalBleProfileParams params) {
+    UNUSED(params);
+    RpiBleProfile* profile = malloc(sizeof(RpiBleProfile));
+    profile->base.config = &rpi_ble_profile;
+    profile->serial_svc = ble_svc_serial_start();
+    return &profile->base;
+}
+
+static void rpi_ble_stop(FuriHalBleProfileBase* profile) {
+    furi_check(profile);
+    furi_check(profile->config == &rpi_ble_profile);
+    RpiBleProfile* rpi_profile = (RpiBleProfile*)profile;
+    ble_svc_serial_stop(rpi_profile->serial_svc);
+    free(rpi_profile);
+}
+
+static void rpi_ble_get_gap_config(GapConfig* target_config, FuriHalBleProfileParams params) {
+    UNUSED(params);
+    ble_profile_serial->get_gap_config(target_config, NULL);
+
+    target_config->mac_address[0] ^= 0x02;
+    target_config->mac_address[1] ^= 0x05;
+
+    const char* name = furi_hal_version_get_name_ptr();
+    snprintf(
+        target_config->adv_name + 1,
+        sizeof(target_config->adv_name) - 1,
+        "RPiMon %s",
+        name ? name : "Zero");
+}
+
+static const FuriHalBleProfileTemplate rpi_ble_profile = {
+    .start = rpi_ble_start,
+    .stop = rpi_ble_stop,
+    .get_gap_config = rpi_ble_get_gap_config,
+};
+// -------------------------------------------------------------------
 
 typedef struct {
     int cpu_pct;
@@ -32,14 +81,18 @@ typedef struct {
 typedef struct {
     Gui* gui;
     ViewPort* view_port;
+    NotificationApp* notification;
     FuriMessageQueue* event_queue;
     FuriMutex* mutex;
     Bt* bt;
     FuriHalBleProfileBase* ble_serial_profile;
-    volatile bool connected;
+    volatile BtStatus bt_status;
+    volatile uint32_t rx_bytes;
     RpiStats stats;
     char rx_buf[BT_SERIAL_BUFFER_SIZE];
     size_t rx_len;
+    char pending_line[BT_SERIAL_BUFFER_SIZE];
+    bool line_ready;
 } RpiMonitorApp;
 
 static int clamp_pct(int val) {
@@ -48,50 +101,70 @@ static int clamp_pct(int val) {
     return val;
 }
 
-static void parse_stats_line(RpiMonitorApp* app, const char* line) {
-    int cpu, ctemp, ram, r_used, r_tot, dsk, dtemp, load, upm;
-    int parsed = sscanf(
-        line,
-        "%d,%d,%d,%d,%d,%d,%d,%d,%d",
-        &cpu,
-        &ctemp,
-        &ram,
-        &r_used,
-        &r_tot,
-        &dsk,
-        &dtemp,
-        &load,
-        &upm);
+static bool parse_csv_9(const char* line, int out[9]) {
+    const char* p = line;
+    for(int i = 0; i < 9; i++) {
+        char* end = NULL;
+        long val = strtol(p, &end, 10);
+        if(end == p) return false;
+        out[i] = (int)val;
+        if(i < 8) {
+            if(*end != ',') return false;
+            p = end + 1;
+        }
+    }
+    return true;
+}
 
-    if(parsed == 9) {
+static void process_pending_line(RpiMonitorApp* app) {
+    char local_line[BT_SERIAL_BUFFER_SIZE];
+    bool has_line = false;
+
+    furi_mutex_acquire(app->mutex, FuriWaitForever);
+    if(app->line_ready) {
+        memcpy(local_line, app->pending_line, sizeof(local_line));
+        app->line_ready = false;
+        has_line = true;
+    }
+    furi_mutex_release(app->mutex);
+
+    if(!has_line) return;
+
+    int v[9];
+    if(parse_csv_9(local_line, v)) {
         furi_mutex_acquire(app->mutex, FuriWaitForever);
-        app->stats.cpu_pct = clamp_pct(cpu);
-        app->stats.cpu_temp_x10 = ctemp;
-        app->stats.ram_pct = clamp_pct(ram);
-        app->stats.ram_used_mb = r_used;
-        app->stats.ram_total_mb = r_tot;
-        app->stats.disk_pct = clamp_pct(dsk);
-        app->stats.disk_temp_x10 = dtemp;
-        app->stats.load_x100 = load;
-        app->stats.uptime_min = upm;
+        app->stats.cpu_pct = clamp_pct(v[0]);
+        app->stats.cpu_temp_x10 = v[1];
+        app->stats.ram_pct = clamp_pct(v[2]);
+        app->stats.ram_used_mb = v[3];
+        app->stats.ram_total_mb = v[4];
+        app->stats.disk_pct = clamp_pct(v[5]);
+        app->stats.disk_temp_x10 = v[6];
+        app->stats.load_x100 = v[7];
+        app->stats.uptime_min = v[8];
         app->stats.last_rx_tick = furi_get_tick();
         app->stats.has_data = true;
         furi_mutex_release(app->mutex);
 
-        view_port_update(app->view_port);
+        notification_message(app->notification, &sequence_display_backlight_on);
     }
 }
 
 static uint16_t bt_serial_callback(SerialServiceEvent event, void* ctx) {
     RpiMonitorApp* app = ctx;
 
-    if(event.type == SerialServiceEventTypeDataReceived) {
+    if(event.event == SerialServiceEventTypeDataReceived) {
+        app->rx_bytes += event.data.size;
         for(size_t i = 0; i < event.data.size; i++) {
             char c = (char)event.data.buffer[i];
             if(c == '\n' || c == '\r') {
                 if(app->rx_len > 0) {
                     app->rx_buf[app->rx_len] = '\0';
-                    parse_stats_line(app, app->rx_buf);
+                    if(furi_mutex_acquire(app->mutex, 10) == FuriStatusOk) {
+                        memcpy(app->pending_line, app->rx_buf, app->rx_len + 1);
+                        app->line_ready = true;
+                        furi_mutex_release(app->mutex);
+                    }
                     app->rx_len = 0;
                 }
             } else if(app->rx_len < sizeof(app->rx_buf) - 1) {
@@ -107,8 +180,7 @@ static uint16_t bt_serial_callback(SerialServiceEvent event, void* ctx) {
 
 static void bt_status_changed_callback(BtStatus status, void* ctx) {
     RpiMonitorApp* app = ctx;
-    app->connected = (status == BtStatusConnected);
-    view_port_update(app->view_port);
+    app->bt_status = status;
 }
 
 static void draw_progress_bar(Canvas* canvas, uint8_t x, uint8_t y, uint8_t w, uint8_t h, int pct) {
@@ -127,7 +199,10 @@ static void render_callback(Canvas* canvas, void* ctx) {
     st = app->stats;
     furi_mutex_release(app->mutex);
 
-    bool fresh = st.has_data && ((furi_get_tick() - st.last_rx_tick) < furi_ms_to_ticks(DATA_TIMEOUT_MS));
+    BtStatus status = app->bt_status;
+    bool connected = (status == BtStatusConnected);
+    bool fresh =
+        st.has_data && ((furi_get_tick() - st.last_rx_tick) < furi_ms_to_ticks(DATA_TIMEOUT_MS));
 
     canvas_clear(canvas);
 
@@ -138,12 +213,12 @@ static void render_callback(Canvas* canvas, void* ctx) {
     canvas_set_font(canvas, FontSecondary);
     canvas_draw_str(canvas, 3, 9, "RPi 5 Monitor");
 
-    const char* status_str = "WAIT";
-    if(!app->ble_serial_profile) {
+    const char* status_str = "ADV";
+    if(!app->ble_serial_profile || status == BtStatusOff || status == BtStatusUnavailable) {
         status_str = "BT OFF";
-    } else if(app->connected && fresh) {
+    } else if(connected && fresh) {
         status_str = "LIVE";
-    } else if(app->connected) {
+    } else if(connected) {
         status_str = "BLE OK";
     }
     canvas_draw_str_aligned(canvas, 125, 9, AlignRight, AlignBottom, status_str);
@@ -151,17 +226,22 @@ static void render_callback(Canvas* canvas, void* ctx) {
     canvas_set_color(canvas, ColorBlack);
 
     if(!st.has_data) {
+        char rx_str[32];
         canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str_aligned(canvas, 64, 30, AlignCenter, AlignCenter, "Czekam na RPi 5...");
+        canvas_draw_str_aligned(canvas, 64, 27, AlignCenter, AlignCenter, "Czekam na RPi 5...");
         canvas_set_font(canvas, FontSecondary);
+        if(!app->ble_serial_profile) {
+            canvas_draw_str_aligned(
+                canvas, 64, 41, AlignCenter, AlignCenter, "Wlacz BT w Settings");
+        } else if(connected) {
+            snprintf(rx_str, sizeof(rx_str), "Polaczono | RX: %lu B", (unsigned long)app->rx_bytes);
+            canvas_draw_str_aligned(canvas, 64, 41, AlignCenter, AlignCenter, rx_str);
+        } else {
+            canvas_draw_str_aligned(
+                canvas, 64, 41, AlignCenter, AlignCenter, "Rozglaszam: RPiMon");
+        }
         canvas_draw_str_aligned(
-            canvas,
-            64,
-            45,
-            AlignCenter,
-            AlignCenter,
-            app->connected ? "Polaczono, brak danych" : "Szukaj BLE: RPiMon");
-        canvas_draw_str_aligned(canvas, 64, 59, AlignCenter, AlignCenter, "[Back] Wyjscie");
+            canvas, 64, 58, AlignCenter, AlignCenter, "[OK] Re-ADV  [Back] Wyjdz");
         return;
     }
 
@@ -197,10 +277,10 @@ static void render_callback(Canvas* canvas, void* ctx) {
     }
     canvas_draw_str_aligned(canvas, 126, 47, AlignRight, AlignBottom, buf);
 
-    // Stopka: Load + Uptime (lub ostrzezenie o utracie sygnalu)
+    // Stopka: Load + Uptime
     canvas_draw_line(canvas, 0, 51, 128, 51);
     if(!fresh) {
-        canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, "Brak nowych danych...");
+        canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, "Brak danych [OK] Re-ADV");
     } else {
         snprintf(buf, sizeof(buf), "Load: %d.%02d", st.load_x100 / 100, abs(st.load_x100 % 100));
         canvas_draw_str(canvas, 2, 62, buf);
@@ -233,6 +313,8 @@ int32_t rpi_monitor_app(void* p) {
 
     app->event_queue = furi_message_queue_alloc(8, sizeof(InputEvent));
     app->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
+    app->bt_status = BtStatusUnavailable;
+    app->notification = furi_record_open(RECORD_NOTIFICATION);
 
     // 1. Konfiguracja GUI
     app->view_port = view_port_alloc();
@@ -242,39 +324,48 @@ int32_t rpi_monitor_app(void* p) {
     app->gui = furi_record_open(RECORD_GUI);
     gui_add_view_port(app->gui, app->view_port, GuiLayerFullscreen);
 
-    // 2. Start BLE Serial
+    // 2. Start profilu BLE Serial (bezposrednia rejestracja callbacku)
     app->bt = furi_record_open(RECORD_BT);
     bt_disconnect(app->bt);
     furi_delay_ms(200);
     bt_keys_storage_set_storage_path(app->bt, APP_DATA_PATH(".bt_rpi.keys"));
 
-    BleProfileSerialParams params = {
-        .device_name_prefix = "RPiMon",
-        .mac_xor = 0x0002,
-    };
-    app->ble_serial_profile = bt_profile_start(app->bt, ble_profile_serial, &params);
+    app->ble_serial_profile = bt_profile_start(app->bt, &rpi_ble_profile, NULL);
     if(app->ble_serial_profile) {
+        RpiBleProfile* rpi_prof = (RpiBleProfile*)app->ble_serial_profile;
+        app->bt_status = BtStatusAdvertising;
         bt_set_status_changed_callback(app->bt, bt_status_changed_callback, app);
-        ble_profile_serial_set_event_callback(
-            app->ble_serial_profile, BT_SERIAL_BUFFER_SIZE, bt_serial_callback, app);
+        ble_svc_serial_set_callbacks(
+            rpi_prof->serial_svc, BT_SERIAL_BUFFER_SIZE, bt_serial_callback, app);
         furi_hal_bt_start_advertising();
     }
 
     // 3. Glowna petla zdarzen
     InputEvent event;
     bool running = true;
+
     while(running) {
-        if(furi_message_queue_get(app->event_queue, &event, 500) == FuriStatusOk) {
-            if(event.type == InputTypeShort && event.key == InputKeyBack) {
-                running = false;
+        if(furi_message_queue_get(app->event_queue, &event, 200) == FuriStatusOk) {
+            if(event.type == InputTypeShort) {
+                if(event.key == InputKeyBack) {
+                    running = false;
+                } else if(event.key == InputKeyOk && app->ble_serial_profile) {
+                    bt_disconnect(app->bt);
+                    furi_delay_ms(150);
+                    app->bt_status = BtStatusAdvertising;
+                    furi_hal_bt_start_advertising();
+                }
             }
         }
+
+        process_pending_line(app);
         view_port_update(app->view_port);
     }
 
-    // 4. Sprzatanie i przywrocenie domyslnego BLE
+    // 4. Bezpieczne sprzatanie
     if(app->ble_serial_profile) {
-        ble_profile_serial_set_event_callback(app->ble_serial_profile, 0, NULL, NULL);
+        RpiBleProfile* rpi_prof = (RpiBleProfile*)app->ble_serial_profile;
+        ble_svc_serial_set_callbacks(rpi_prof->serial_svc, 0, NULL, NULL);
     }
     bt_set_status_changed_callback(app->bt, NULL, NULL);
     bt_disconnect(app->bt);
@@ -286,6 +377,7 @@ int32_t rpi_monitor_app(void* p) {
     gui_remove_view_port(app->gui, app->view_port);
     view_port_free(app->view_port);
     furi_record_close(RECORD_GUI);
+    furi_record_close(RECORD_NOTIFICATION);
     furi_mutex_free(app->mutex);
     furi_message_queue_free(app->event_queue);
     free(app);

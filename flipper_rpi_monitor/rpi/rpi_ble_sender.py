@@ -8,8 +8,9 @@ import psutil
 from bleak import BleakClient, BleakScanner
 
 FLIPPER_RX_UUID = "19ed82ae-ed21-4c9d-4145-228e62fe0000"
-DEVICE_PREFIX = "RPiMon"
+DEVICE_PREFIX = "rpimon"
 SEND_INTERVAL = 1.5
+CHUNK_SIZE = 20
 
 
 def read_cpu_temp_x10() -> int:
@@ -60,48 +61,79 @@ def build_payload() -> bytes:
     return line.encode("ascii")
 
 
+async def scan_all() -> None:
+    print("Skanuje urzadzenia BLE przez 6 sekund...")
+    found = await BleakScanner.discover(timeout=6.0, return_adv=True)
+    if not found:
+        print("Nie wykryto zadnych urzadzen BLE (sprawdz czy Bluetooth na RPi jest wlaczony).")
+        return
+    for addr, (dev, adv) in found.items():
+        name = dev.name or adv.local_name or "(brak nazwy)"
+        uuids = ", ".join(adv.service_uuids) if adv.service_uuids else "-"
+        print(f"  {addr}  |  {name}  |  UUIDs: {uuids}")
+
+
 async def find_flipper(target_addr: str | None) -> str | None:
     if target_addr:
         return target_addr
 
-    devices = await BleakScanner.discover(timeout=5.0)
-    for d in devices:
-        if d.name and d.name.startswith(DEVICE_PREFIX):
-            return d.address
+    found = await BleakScanner.discover(timeout=6.0, return_adv=True)
+    for addr, (dev, adv) in found.items():
+        name = (dev.name or adv.local_name or "").lower()
+        if DEVICE_PREFIX in name:
+            print(f"Znaleziono Flippera: {dev.name or adv.local_name} ({addr})")
+            return addr
     return None
 
 
+async def send_chunked(client: BleakClient, payload: bytes) -> None:
+    print("TX:", payload.decode("ascii").strip())
+    for i in range(0, len(payload), CHUNK_SIZE):
+        await client.write_gatt_char(
+            FLIPPER_RX_UUID,
+            payload[i : i + CHUNK_SIZE],
+            response=True,
+        )
+
+
 async def run_loop(target_addr: str | None) -> None:
-    psutil.cpu_percent(interval=None)  # pierwsze wywolanie kalibrujace
+    psutil.cpu_percent(interval=None)
 
     while True:
         try:
             addr = await find_flipper(target_addr)
             if not addr:
-                print(f"Nie znaleziono '{DEVICE_PREFIX}', ponawiam za 3s...")
+                print("Nie znaleziono 'RPiMon' w eterze (sprawdz status ADV na Flipperze). Ponawiam za 3s...")
                 await asyncio.sleep(3)
                 continue
 
             print(f"Laczenie z Flipperem ({addr})...")
-            async with BleakClient(addr, timeout=10.0) as client:
+            async with BleakClient(addr, timeout=15.0) as client:
                 print("Polaczono! Wysylam statystyki.")
                 while client.is_connected:
                     payload = build_payload()
-                    await client.write_gatt_char(FLIPPER_RX_UUID, payload, response=False)
+                    await send_chunked(client, payload)
                     await asyncio.sleep(SEND_INTERVAL)
 
         except Exception as e:
-            print(f"Rozlaczono / blad BLE: {e}. Ponawiam za 3s...")
+            msg = str(e)
+            print(f"Rozlaczono / blad BLE: {msg}")
+            if "Authentication" in msg or "Encryption" in msg or "NotPermitted" in msg:
+                print("Wskazowka: sparuj Flippera jednorazowo przez bluetoothctl (pair + trust).")
             await asyncio.sleep(3)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Wysyla statystyki RPi 5 do Flipper Zero przez BLE")
     parser.add_argument("--address", help="Adres MAC BLE Flippera (opcjonalnie, przyspiesza laczenie)")
+    parser.add_argument("--scan", action="store_true", help="Wypisz wszystkie widoczne urzadzenia BLE i zakoncz")
     args = parser.parse_args()
 
     try:
-        asyncio.run(run_loop(args.address))
+        if args.scan:
+            asyncio.run(scan_all())
+        else:
+            asyncio.run(run_loop(args.address))
     except KeyboardInterrupt:
         print("\nZatrzymano.")
         sys.exit(0)
