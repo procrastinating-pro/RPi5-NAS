@@ -34,7 +34,7 @@ Zamiast korzystać z wbudowanego kreatora w Raspberry Pi Imagerze (który bywa z
 2. Uruchom interaktywny konfigurator bezpośrednio z terminala:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/rpi5_configurator.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/rpi5_configurator.sh)
 ```
 
 **Co możesz skonfigurować w kreatorze:**
@@ -69,7 +69,7 @@ nmap -p 22 -T4 -n 192.168.1.0/24 --open
 Po zalogowaniu się na Raspberry Pi 5 przez SSH zainstaluj środowisko Docker, Docker Compose v2 oraz harmonogram automatycznej konserwacji systemu jedną komendą:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/install_docker.sh | bash && newgrp docker
+curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/install_docker.sh | bash && newgrp docker
 ```
 
 **Co robi skrypt:**
@@ -92,7 +92,7 @@ docker run --rm hello-world
 Aby uruchomić wybrane usługi domowego serwera (z możliwością wyboru `[T/n]` dla każdego kontenera), wykonaj na Raspberry Pi 5:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/setup_homelab.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_homelab.sh)
 ```
 
 *(Uwaga: Użycie składni `bash <(curl ...)` jest wymagane, ponieważ skrypt działa interaktywnie i pobiera od Ciebie wybór kontenerów, hasła, tokeny oraz ścieżki z klawiatury).*
@@ -158,7 +158,7 @@ Jeśli w przyszłości zechcesz dodać kolejne własne domeny, wystarczy wyedyto
 W zamkniętej obudowie z nakładką M.2 HAT+ i radiatorami na dysku SSD Gen 3 domyślna krzywa wentylatora (start od 50°C CPU) jest zbyt pasywna. Aby zapewnić optymalny obieg powietrza wokół radiatora NVMe oraz cichą pracę, uruchom konfigurator chłodzenia:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/setup_cooler.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/setup_cooler.sh)
 ```
 
 **Co robi skrypt:**
@@ -191,7 +191,7 @@ Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych lokalnyc
 Jeśli chcesz zresetować całe środowisko Docker HomeLab, usunąć wszystkie kontenery oraz ich konfigurację i zacząć od czystego stanu, uruchom skrypt deinstalacyjny:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/uninstall_homelab.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/uninstall_homelab.sh)
 ```
 
 **Zabezpieczenia i etapy działania deinstalatora:**
@@ -213,7 +213,7 @@ watch -n 2 rpi-temp
   Jeśli wentylator nie reaguje na zmiany temperatury, uruchom skrypt diagnostyczny, który przeskanuje partycje `bootfs` i `rootfs`, usunie konflikty i przetestuje sprzętowo linię PWM (`PWM=0` vs `PWM=255`):
 
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/Raspbian-Configurator/refs/heads/main/diagnose_and_fix_fan.sh)
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/diagnose_and_fix_fan.sh)
 ```
 
 * **Sprawdzenie czy nocny Auto-Update systemu (03:30) został przeprowadzony:**
