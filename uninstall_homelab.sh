@@ -11,7 +11,7 @@ clear
 echo -e "${RED}======================================================${NC}"
 echo -e "${RED}     DEINSTALATOR DOCKER HOMELAB (RPi 5)              ${NC}"
 echo -e "${RED}======================================================${NC}"
-echo -e "${YELLOW}UWAGA: Ten skrypt bezpowrotnie usunie wszystkie kontenery${NC}"
+echo -e "${YELLOW}UWAGA: Ten skrypt bezpowrotnie usunie wszystkie kontenery,${NC}"
 echo -e "${YELLOW}sieci Dockera oraz pliki konfiguracyjne z Twojego Raspberry Pi.${NC}"
 
 read -p "Czy na pewno chcesz kontynuować? (Wpisz 'TAK' dużymi literami, aby potwierdzić): " CONFIRM1
@@ -31,7 +31,7 @@ if [ -f "$DOCKER_DIR/docker-compose.yml" ]; then
     sudo docker compose down -v || true
 else
     echo -e "${YELLOW}Brak pliku docker-compose.yml w $DOCKER_DIR. Próba ręcznego usunięcia...${NC}"
-    sudo docker rm -f pihole samba-nas filebrowser-nas twingate-connector vaultwarden jellyfin qbittorrent prowlarr sonarr radarr bazarr watchtower 2>/dev/null || true
+    sudo docker rm -f pihole samba-nas filebrowser-nas twingate-connector vaultwarden watchtower 2>/dev/null || true
 fi
 
 echo -e "\n${CYAN}[2/4] Czyszczenie nieużywanych sieci i obrazów Dockera (prune)...${NC}"
@@ -47,7 +47,7 @@ else
 fi
 
 echo -e "\n${RED}[4/4] DANE Z DYSKU NAS (/srv/nas/pliki)${NC}"
-echo -e "${YELLOW}Obecnie na dysku znajdują się wszystkie Twoje pobrane pliki i foldery udostępniane przez Sambę.${NC}"
+echo -e "${YELLOW}Obecnie na dysku znajdują się wszystkie Twoje pliki i foldery udostępniane przez Sambę oraz FileBrowsera.${NC}"
 read -p "Czy chcesz RÓWNIEŻ usunąć całą zawartość NAS ($NAS_DIR)? (Wpisz 'USUN_DANE' aby wykasować): " CONFIRM2
 
 if [ "$CONFIRM2" == "USUN_DANE" ]; then
