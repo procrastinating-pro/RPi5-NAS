@@ -1,4 +1,4 @@
-# 🍓 Raspbian-Configurator (Raspberry Pi 5 Headless + Docker HomeLab + NAS + Media Stack + Auto-Maintenance)
+# 🍓 RPi5-PARRY (Raspberry Pi 5 Headless + Docker HomeLab + NAS + Media Stack + Auto-Maintenance)
 
 Zestaw automatycznych i interaktywnych skryptów Bash pozwalających na szybkie przygotowanie czystego obrazu **Raspberry Pi OS (64-bit)** pod Raspberry Pi 5 (wraz z obsługą **NVMe HAT+**), bezobsługową aktualizację systemu, optymalizację krzywej chłodzenia (**Active Cooler + NVMe Heatsink Guard**), instalację **Dockera** oraz modułowe wdrożenie domowego serwera **HomeLab, NAS & Media Stack** (**Pi-hole**, **Samba**, **FileBrowser**, **Twingate**, **Vaultwarden**, **Jellyfin**, **qBittorrent**, **Prowlarr**, **Sonarr**, **Radarr**, **Bazarr** oraz **Watchtower**).
 
