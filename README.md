@@ -21,7 +21,7 @@ Projekt został zaprojektowany i zoptymalizowany pod kątem następującej konfi
 | **`install_docker.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Aktualizuje system, włącza `fstrim.timer` dla NVMe, ustawia codzienny Auto-Update/Clean w Cronie (03:30), instaluje **Docker Engine** oraz **Docker Compose v2** (z pominięciem, jeśli jest już zainstalowany) i konfiguruje rotację logów. | 
 | **`setup_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Interaktywny kreator podstawowych usług HomeLab (Czysty Bash `[T/n]`, katalog `~/docker/homelab`): **Pi-hole**, **Samba (SMB)**, **FileBrowser**, **Twingate Connector**, **Vaultwarden** oraz **Watchtower** (auto-update o 04:00). | 
 | **`setup_mediastack.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Opcjonalny, niezależny kreator **Media Stacka** (Czysty Bash `[T/n]`, katalog `~/docker/mediastack`): **Jellyfin**, **qBittorrent** (z wbudowanym powiadomieniem prawnym P2P i potwierdzeniem `[t/N]`), **Prowlarr**, **Sonarr**, **Radarr** i **Bazarr** w układzie hardlinków. | 
-| **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator środowiska HomeLab (z podwójnym potwierdzeniem): zatrzymuje i usuwa kontenery, czyści obrazy i sieci Dockera, kasuje katalog `~/docker/homelab`, przywraca domyślny stan `systemd-resolved` (port 53) oraz opcjonalnie usuwa dane z dysku NAS (`/srv/nas/pliki`). | 
+| **`uninstall_homelab.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Bezpieczny deinstalator z menu wyboru zakresu (**tylko HomeLab & NAS**, **tylko Media Stack** lub **oba środowiska**) i podwójnym potwierdzeniem: usuwa wybrane kontenery, nieużywane sieci/obrazy i katalogi konfiguracyjne, przywraca `systemd-resolved` (przy usuwaniu HomeLaba) oraz opcjonalnie usuwa dane na dysku NAS (`/srv/nas/pliki` lub samo `/media` i `/downloads`). | 
 | **`setup_cooler.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Konfigurator chłodzenia **Active Cooler**: ustawia krzywą wentylatora w `config.txt`, instaluje usługę `nvme-fan-guard` (przyspieszającą wentylator, gdy dysk NVMe z radiatorem nagrzewa się podczas transferów NAS) oraz dodaje polecenie diagnostyczne `rpi-temp`. | 
 | **`diagnose_and_fix_fan.sh`** | 🍓 Na Raspberry Pi 5 (przez SSH) | Narzędzie diagnostyczno-naprawcze dla **Active Coolera**: skanuje partycje `bootfs` oraz `rootfs` (w tym konflikty SD vs NVMe), czyści błędne reguły `udev`/`systemd`, przywraca czystą konfigurację w `config.txt` i wykonuje sprzętowy test linii PWM (`0` vs `255`). | 
 | **`rpi5_nvme_case.scad`** | 💻 Na komputerze (OpenSCAD) | Parametryczny model 3D podwyższonej obudowy z miejscem na M.2 HAT+, radiatory NVMe, przedłużoną komorą na taśmę PCIe, uniesionym dachem z logo (*Badge*) oraz nóżkami dystansowymi pod druk z elastycznego TPU. | 
@@ -208,24 +208,25 @@ Przy założeniu domyślnego adresu IP `192.168.1.250` oraz domyślnych lokalnyc
 | **Radarr** | `http://192.168.1.250:7878` (`http://media.home:7878`) | Filmy (Root Folder: `/data/media/movies`). | 
 | **Bazarr** | `http://192.168.1.250:6767` (`http://media.home:6767`) | Automatyczne napisy (połącz z Sonarr i Radarr po API). | 
 
-## 🗑️ Całkowita deinstalacja i czyszczenie środowiska (`uninstall_homelab.sh`)
+## 🗑️ Deinstalacja i czyszczenie środowiska (`uninstall_homelab.sh`)
 
-Jeśli chcesz zresetować główne środowisko Docker HomeLab, usunąć jego kontenery oraz konfigurację i zacząć od czystego stanu, uruchom skrypt deinstalacyjny:
+Jeśli chcesz zresetować wybrane środowisko (albo oba naraz), usunąć jego kontenery oraz konfigurację i zacząć od czystego stanu, uruchom skrypt deinstalacyjny:
 
 ```bash
 bash <(curl -fsSL [https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/uninstall_homelab.sh](https://raw.githubusercontent.com/procrastinating-pro/RPi5-PARRY/refs/heads/main/uninstall_homelab.sh))
 ```
 
-**Zabezpieczenia i etapy działania deinstalatora:**
+**Menu wyboru i zabezpieczenia deinstalatora:**
 
-1. **Potwierdzenie usunięcia kontenerów (`TAK`):** Skrypt zatrzymuje i usuwa kontenery HomeLab (`docker compose down -v`), czyści nieużywane sieci oraz pobrane obrazy (`docker image prune -a -f`), kasuje katalog konfiguracyjny `~/docker/homelab` i przywraca domyślne ustawienia `systemd-resolved` dla portu `53`.
-2. **Ochrona danych na dysku NAS (`USUN_DANE`):** Twoje prywatne pliki i dane w `/srv/nas/pliki` są domyślnie **chronione**. Zostaną usunięte wyłącznie wtedy, gdy w drugim kroku jawnie wpiszesz z klawiatury frazę `USUN_DANE`.
-
-*Aby osobno usunąć opcjonalny Media Stack (bez ruszania plików w `/srv/nas/pliki`):*
-
-```bash
-cd ~/docker/mediastack && sudo docker compose down -v && rm -rf ~/docker/mediastack
-```
+1. **Wybór zakresu (`1–4`):**
+   * `1)` **Tylko HomeLab & NAS** – usuwa kontenery i katalog `~/docker/homelab` (Pi-hole, Samba, FileBrowser, Twingate, Vaultwarden, Watchtower).
+   * `2)` **Tylko Media Stack** – usuwa kontenery i katalog `~/docker/mediastack` (Jellyfin, qBittorrent, Prowlarr, Sonarr, Radarr, Bazarr) bez ruszania HomeLaba i bez naruszania działającego Pi-hole.
+   * `3)` **Oba środowiska** – usuwa jednocześnie HomeLab & NAS oraz Media Stack.
+   * `4)` **Anuluj** – bezpieczne wyjście ze skryptu.
+2. **Potwierdzenie usunięcia kontenerów (`TAK`):** Po wyborze zakresu skrypt zatrzymuje i usuwa wybrane kontenery (`docker compose down -v`), czyści wyłącznie nieużywane sieci i obrazy (`docker image prune -a -f`), a katalogi konfiguracyjne kasuje tylko dla wybranego zakresu. Domyślna konfiguracja `systemd-resolved` (port `53`) jest przywracana **wyłącznie przy usuwaniu HomeLaba** (opcja `1` lub `3`).
+3. **Ochrona danych na dysku NAS (`USUN_MEDIA` / `USUN_DANE`):** Pliki w `/srv/nas/pliki` są domyślnie **chronione**:
+   * Przy usuwaniu **samego Media Stacka** (opcja `2`) skrypt pyta wyłącznie o wykasowanie podkatalogów `/srv/nas/pliki/media` oraz `/srv/nas/pliki/downloads` (wymaga wpisania frazy `USUN_MEDIA`).
+   * Przy usuwaniu **HomeLaba** lub **obu środowisk** (opcja `1` lub `3`) skrypt pyta o usunięcie całej zawartości `/srv/nas/pliki` (wymaga wpisania frazy `USUN_DANE`).
 
 ## 🛠️ Przydatne komendy diagnostyczne
 
